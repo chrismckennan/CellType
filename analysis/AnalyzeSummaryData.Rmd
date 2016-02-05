@@ -1,0 +1,112 @@
+---
+title: "Analyze GTex Data with Brian's Summary Data"
+author: "Chris McKennan"
+date: '2016-01-25'
+output: pdf_document
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+## Objectives
+
+This file takes Brian's GTex summary files and performs a Gibbs sampler to estimate the posterior probability each gene in the network is UNAFFECTED by the genotype at the SNP.
+
+
+## Grab functions
+
+Source Gibbs Sampler and Bayes Factor functions.
+
+```{r}
+source("../R/SimulateNetworkExpression.R")  #Compute Bayes factors
+source("../R/directionality_CGM.R")    #Gibbs Sampler
+```
+
+Directory in which to perform the analysis
+
+```{r}
+directory.in <- '../data/cis_summary_data/adiposesubcutaneous/thresh_80'
+directory.out <- '../output/cis_summary_data/adiposesubcutaneous/thresh_80'
+```
+
+Create directory structure to house files
+
+```{r}
+if (!file.exists(directory.out)) {
+  dir.string <- strsplit(directory.out, split="/")[[1]]
+  tmp.string = dir.string[1]
+  for (i in 2:length(dir.string)) {
+    tmp.string = file.path(tmp.string, dir.string[i])
+    if (!file.exists(tmp.string)) {
+      dir.create(tmp.string)
+    }
+  }
+}
+```
+
+
+Run the analysis on all of the files in the directory
+
+```{r}
+all.files <- list.files(directory.in)
+
+count = 1
+for (file in all_files) {
+  file.path <- paste(directory.in, file, sep="/")
+  all_data = readLines(file.path)
+  tissue <- strsplit(all_data[1], split='\t', perl=T)[[1]][2]
+	n.ind <- as.numeric(strsplit(all_data[2], split='\t', perl=T)[[1]][2])   #Number of independent measurements
+	chr <- as.numeric(strsplit(all_data[3], split='\t', perl=T)[[1]][2])    #Chromosome number
+	gene <- strsplit(all_data[4], split='\t', perl=T)[[1]][2]    #Gene of interest
+	SNP <- strsplit(all_data[5], split='\t', perl=T)[[1]][2]    #eQTL of interest
+	Gene.names <- strsplit(all_data[6], split='\t', perl=T)[[1]][2:length(strsplit(all_data[6], split='\t', perl=T)[[1]])]   #Column names for Y'Y
+	n.genes <- length(Gene.names)    #Number of genes in the network
+	
+	YtY <- array(NA, dim=c(n.genes, n.genes))   #Y'Y
+	for (r in 1:n.genes) {
+	  YtY[r,] <- as.numeric(strsplit(all_data[7+r], split='\t', perl=T)[[1]])
+	}
+	
+	sxx <- as.numeric(strsplit(all_data[8+n.genes], split='\t', perl=T)[[1]][2])   #X'X, a scalar
+	YtX <- as.numeric(strsplit(all_data[10+n.genes], split='\t', perl=T)[[1]])    #Y'X, a vector
+	
+	suff.stat <- list(SYY = YtY/n.ind, sxx = sxx/n.ind, SYX = YtX/n.ind, SY1 = rep(0, n.genes), mu.g = -1+sqrt(1+2*sxx/n.ind))
+	
+	if (n.genes <= 15) {
+	  n.iter <- 3000
+	  n.burn <- 1000
+	} else {
+	  if (n.genes <= 25) {
+	    n.iter <- 4000
+	    n.burn <- 2000
+	  } else {
+	    n.iter <- 5000
+	    n.burn <- 2500
+	  }
+	}
+	sigma.a <- c(0.1, 0.4)
+	weights.sigma <- c(1, 1)
+	gibbs <- Gibbs.dir(n.iter, n.burn, suff.stat, which(Gene.names == gene), n.ind, sigma.a, weights.sigma, n.genes-1)
+  
+  gibbs.mat <- rbind(gibbs$post.mean)
+  colnames(gibbs.mat) <- Gene.names
+  out.file <- file.path(directory.out, sub("(summary)", '\\1.gibbs', file, perl=T))
+  write.table(gibbs.mat, out.file, col.names=T, row.names=F, append=F, quote=F)
+  
+  print(paste0(as.character(count), " of ", as.character(length(all.files))))
+  count = count + 1
+}
+
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
