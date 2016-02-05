@@ -1,0 +1,94 @@
+---
+title: "Investigate cell type and how it relates to covariates"
+author: "Chris McKennan"
+date: 2016-02-05
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+The purpose of this file is to investigate how cell type is related to the covariates. That is, do we have any hope in predicting cell type given an individuals covariate information. In order to apply our supervised method, we need the variance in cell type among unrelated individuals to be small, given the covariate information.
+
+## Get data into R
+
+Get the data into R and initialize global variables.
+
+```{r}
+path.LPS.kids <- '/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/HTkids_cellprop/HTkids_LPS_covar_ImpAct_10115.txt'
+path.methylation <- '/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/Hutterite_Methylation_data/Meth_covar_allsamp_impcells_10115.txt'
+data.cov <- data.frame(read.table(path.methylation, sep="\t", quote="\"", dec=".", header=T, check.names=F))
+data.LPS <- data.frame(read.table(path.LPS.kids, sep="\t", quote="\"", dec=".", header=T, check.names=F))
+cell.names <- colnames(data.LPS)[(ncol(data.LPS) - 5):ncol(data.LPS)]
+n.cells <- length(cell.names)
+n.ind <- nrow(data.LPS)
+ind.ids.cell <- data.LPS$Rowid    #IDs of individuals with cell type data
+ind.ids.covar <- data.cov$Rowid   #IDs of individuals in complete covariate file
+```
+
+## How well do covariates predict cell type
+cell types are on regular 0-1 scale
+
+```{r}
+age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
+model.mat <- model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS)
+beta.op <- solve(t(model.mat) %*% model.mat, t(model.mat))
+H <- model.mat %*% solve(t(model.mat) %*% model.mat, t(model.mat))
+Y.mat <- as.matrix(data.LPS[,(ncol(data.LPS) - 5):ncol(data.LPS)])
+Y.mat.hat <- H %*% Y.mat
+beta.mat <- beta.op %*% Y.mat
+var.vec <- diag( t(Y.mat) %*% Y.mat - t(Y.mat) %*% Y.mat.hat)/(n.ind - ncol(model.mat))
+
+i = 3
+plot(Y.mat.hat[,i], Y.mat[,i], xlim=range(Y.mat.hat[,i], Y.mat[,i]), ylim=range(Y.mat.hat[,i], Y.mat[,i]))
+lines(seq(0,100, 100), seq(0, 100, 100))
+
+var.beta.hat <- diag(1/diag(solve(t(model.mat) %*% model.mat)))
+t.scores <- sqrt(var.beta.hat) %*% beta.mat %*% diag(1/sqrt(var.vec))
+
+```
+
+The only statistically significant predictors are the intercept in all regressions (obviously) and the effect on age in 'other' cells. Maybe we can completely ignore the fact that these depend on covariates? They do not appear to depend on them...
+
+cell types are probit-transformed:
+
+```{r}
+age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
+model.mat <- model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS)
+beta.op <- solve(t(model.mat) %*% model.mat, t(model.mat))
+H <- model.mat %*% solve(t(model.mat) %*% model.mat, t(model.mat))
+Y.mat <- qnorm(as.matrix(data.LPS[,(ncol(data.LPS) - 5):ncol(data.LPS)])/100)
+Y.mat.hat <- H %*% Y.mat
+beta.mat <- beta.op %*% Y.mat
+var.vec <- diag( t(Y.mat) %*% Y.mat - t(Y.mat) %*% Y.mat.hat)/(n.ind - ncol(model.mat))
+
+i = 3
+plot(Y.mat.hat[,i], Y.mat[,i], xlim=range(Y.mat.hat[,i], Y.mat[,i]), ylim=range(Y.mat.hat[,i], Y.mat[,i]))
+lines(seq(0,100, 100), seq(0, 100, 100))
+```
+
+The conclusion is that regardless of scale (probit-transformed or regular scale), the current covariates (age, sex, asthma status) are a poor predictor of cell type. It also looks like we can get away with binning ages.
+
+## Is logit(beta value) an appropriate scale to do regression against cell type (hopefully yes, so we can assume a normal response)
+
+Load Michele's data
+
+```{r}
+#Load SWAN-normalized data
+#Variables are Mset.swan.norm and rgset
+load(file="~/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/MyWork/SavedObjects/Rfile.RData")
+meth.norm <- getMeth(Mset.swan.norm)
+unmeth.norm <- getUnmeth(Mset.swan.norm)
+beta.values <- meth.norm/(meth.norm+unmeth.norm+100)  #These are ordered by row in data.cov
+```
+
+Identify columns of the data that correspond to the data that I have in data.LPS (i.e. cell type data)
+
+```{r}
+
+```
+
