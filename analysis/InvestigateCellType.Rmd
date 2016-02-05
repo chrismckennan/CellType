@@ -80,15 +80,36 @@ Load Michele's data
 ```{r}
 #Load SWAN-normalized data
 #Variables are Mset.swan.norm and rgset
-load(file="~/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/MyWork/SavedObjects/Rfile.RData")
+load(file="/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/MyWork/SavedObjects/Rfile.RData")
 meth.norm <- getMeth(Mset.swan.norm)
 unmeth.norm <- getUnmeth(Mset.swan.norm)
 beta.values <- meth.norm/(meth.norm+unmeth.norm+100)  #These are ordered by row in data.cov
 ```
 
-Identify columns of the data that correspond to the data that I have in data.LPS (i.e. cell type data)
+Identify columns of the data that correspond to the data that I have in data.LPS (i.e. cell type data) and perform a regression
 
 ```{r}
+col.use <- match(ind.ids.cell, ind.ids.covar)
+beta.cell <- beta.values[,col.use]
+M.cell <- log(beta.cell/(1-beta.cell))
+model.mat <- model.matrix(~Tcell.act + Bcell.act + Eos.act + Neut.act + Mono.act, data=data.LPS)
+beta.op <- solve(t(model.mat) %*% model.mat, t(model.mat))
+H <- model.mat %*% beta.op
+H.perp <- diag(1,ncol(H)) - H
 
+coef.beta <- beta.op %*% t(beta.cell)
+ceof.M <- beta.op %*% t(M.cell)
+
+SSreg.beta <- apply(beta.cell %*% H, 1, var)
+SSreg.M <- apply(M.cell %*% H, 1, var)
+SSY.beta <- apply(beta.cell, 1, var)
+SSY.M <- apply(M.cell, 1, var)
+
+R2.beta <- SSreg.beta/SSY.beta
+R2.M <- SSreg.M/SSY.M
+
+plot(R2.beta, R2.M, pch=".", xlim=range(R2.M, R2.beta), ylim=range(R2.M, R2.beta), main='Comparison of Variance Explained by Cell type', xlab='R^2 when Y = beta value', ylab='R^2 when Y = M value')
+lines(seq(0,1,length=100), seq(0,1,length=100), col="red")
 ```
 
+From this, it looks like we can use M-values when dealing with confounding due to cell type. It also appears cell type is NOT very dependent on these coefficients, but they may be dependent in other data sets.
