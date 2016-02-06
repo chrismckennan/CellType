@@ -1,0 +1,99 @@
+---
+title: "Simulate Cell Type Confounding"
+author: "Chris McKennan"
+date: 2016-02-05
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=FALSE}
+source("chunk-options.R")
+```
+
+The purpose of this is to simulate data from the model $Y_{p \times n} = B_{p \times d}X_{d \times n} + L_{p \times k}B_{k \times d}^*X + LW_{k \times n} + Z_{p \times k'}\Gamma_{k' \times n} + E$. We want to know if we can get a reasonable estimate for $B$ using our proposed methods. We will let $W$ be the matrix of cell types. To start off, we will assume the covariates $X$ are simply disease status indicators, i.e. $d = 2$. 
+
+## Load required functions
+
+```{r}
+library(minfi)
+library('IlluminaHumanMethylation450kmanifest')
+library('IlluminaHumanMethylation450kanno.ilmn12.hg19')
+library('FlowSorted.Blood.450k')      ##Methylation data on 6 males, 10 cell types; RGset object
+library('RefFreeEWAS')
+library('nlme')
+library('corpcor')
+library('sva')
+```
+
+
+## Preliminary analysis to get an idea of effect sizes of $B$ and $L$.
+
+Get the data into R and initialize global variables.
+
+```{r}
+path.LPS.kids <- '/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/HTkids_cellprop/HTkids_LPS_covar_ImpAct_10115.txt'
+path.methylation <- '/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/Hutterite_Methylation_data/Meth_covar_allsamp_impcells_10115.txt'
+data.cov <- data.frame(read.table(path.methylation, sep="\t", quote="\"", dec=".", header=T, check.names=F))
+data.LPS <- data.frame(read.table(path.LPS.kids, sep="\t", quote="\"", dec=".", header=T, check.names=F))
+cell.names <- colnames(data.LPS)[(ncol(data.LPS) - 5):ncol(data.LPS)]
+n.cells <- length(cell.names)
+n.ind <- nrow(data.LPS)
+ind.ids.cell <- data.LPS$Rowid    #IDs of individuals with cell type data
+ind.ids.covar <- data.cov$Rowid   #IDs of individuals in complete covariate file
+```
+
+Load Michele's data
+
+```{r}
+#Load SWAN-normalized data
+#Variables are Mset.swan.norm and rgset
+load(file="/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/MyWork/SavedObjects/Rfile.RData")
+meth.norm <- getMeth(Mset.swan.norm)
+unmeth.norm <- getUnmeth(Mset.swan.norm)
+beta.values <- meth.norm/(meth.norm+unmeth.norm+100)  #These are ordered by row in data.cov
+```
+
+Identify columns of the data that correspond to the data that I have in data.LPS (i.e. cell type data) and perform a regression. Note that I have not removed CHIP effect. I am only interested in getting an idea of the relative effects of cell type and asthma status.
+
+```{r}
+col.use <- match(ind.ids.cell, ind.ids.covar)
+beta.cell <- beta.values[,col.use]
+M.cell <- log(beta.cell/(1-beta.cell))
+m <- nrow(M.cell); n <- ncol(M.cell)  #m = #CpG sites; n = #individuals
+model.mat <- model.matrix(~Tcell.act + Bcell.act + Eos.act + Neut.act + Mono.act + asthma, data=data.LPS)
+beta.op <- solve(t(model.mat) %*% model.mat, t(model.mat))
+H <- model.mat %*% beta.op
+H.perp <- diag(1,nrow(H)) - H
+
+coef.M <- beta.op %*% t(M.cell)
+coef.beta <- beta.op %*% t(beta.cell)
+var.mat <- solve(t(model.mat) %*% model.mat)
+var.effects <- rep(NA, m)
+stand.effects <- array(NA, dim=dim(coef.M))
+for (p in 1:m) {
+  tmp.site <- cbind(M.cell[p,])
+  var.effects[p] <- t(tmp.site) %*% H.perp %*% tmp.site/(n - ncol(model.mat))
+  stand.effects[,p] <- 1/sqrt(var.effects[p]) * diag(1/sqrt(diag(var.mat))) %*% cbind(coef.M[,p])
+}
+```
+
+Below are plots of the standardized effects for asthma and the six cell types at each CpG site. What is important to notice is that the asthma effect is somewhat comparable to the cell type effects. That is, we are losing a lot of information if we assume that the effect size is negligable compared to cell type (i.e. if we assume that $BX \ll LB^* X$).
+
+```{r}
+beta.disease <- stand.effects[7,]   #My disease effects. These are quite large in comparison to the cell effects
+hist(beta.disease, xlab='Standardized Asthma Effect Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
+hist(stand.effects[2,], xlab='Standardized Tcell Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
+hist(stand.effects[3,], xlab='Standardized Bcell Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
+hist(stand.effects[4,], xlab='Standardized Eos cell Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
+hist(stand.effects[5,], xlab='Standardized Neutrophil Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
+hist(stand.effects[6,], xlab='Standardized Monocyte Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

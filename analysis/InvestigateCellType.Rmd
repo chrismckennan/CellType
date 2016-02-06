@@ -14,6 +14,20 @@ source("chunk-options.R")
 
 The purpose of this file is to investigate how cell type is related to the covariates. That is, do we have any hope in predicting cell type given an individuals covariate information. In order to apply our supervised method, we need the variance in cell type among unrelated individuals to be small, given the covariate information.
 
+## Load required functions
+
+```{r}
+library(minfi)
+library('IlluminaHumanMethylation450kmanifest')
+library('IlluminaHumanMethylation450kanno.ilmn12.hg19')
+library('FlowSorted.Blood.450k')      ##Methylation data on 6 males, 10 cell types; RGset object
+library('RefFreeEWAS')
+library('nlme')
+library('corpcor')
+library('sva')
+```
+
+
 ## Get data into R
 
 Get the data into R and initialize global variables.
@@ -35,19 +49,19 @@ cell types are on regular 0-1 scale
 
 ```{r}
 age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
-model.mat <- model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS)
-beta.op <- solve(t(model.mat) %*% model.mat, t(model.mat))
-H <- model.mat %*% solve(t(model.mat) %*% model.mat, t(model.mat))
+model.mat.cov <- model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS)
+beta.op.cov <- solve(t(model.mat.cov) %*% model.mat.cov, t(model.mat.cov))
+H.cov <- model.mat.cov %*% solve(t(model.mat.cov) %*% model.mat.cov, t(model.mat.cov))
 Y.mat <- as.matrix(data.LPS[,(ncol(data.LPS) - 5):ncol(data.LPS)])
-Y.mat.hat <- H %*% Y.mat
-beta.mat <- beta.op %*% Y.mat
-var.vec <- diag( t(Y.mat) %*% Y.mat - t(Y.mat) %*% Y.mat.hat)/(n.ind - ncol(model.mat))
+Y.mat.hat <- H.cov %*% Y.mat
+beta.mat <- beta.op.cov %*% Y.mat
+var.vec <- diag( t(Y.mat) %*% Y.mat - t(Y.mat) %*% Y.mat.hat)/(n.ind - ncol(model.mat.cov))
 
 i = 3
 plot(Y.mat.hat[,i], Y.mat[,i], xlim=range(Y.mat.hat[,i], Y.mat[,i]), ylim=range(Y.mat.hat[,i], Y.mat[,i]))
 lines(seq(0,100, 100), seq(0, 100, 100))
 
-var.beta.hat <- diag(1/diag(solve(t(model.mat) %*% model.mat)))
+var.beta.hat <- diag(1/diag(solve(t(model.mat.cov) %*% model.mat.cov)))
 t.scores <- sqrt(var.beta.hat) %*% beta.mat %*% diag(1/sqrt(var.vec))
 
 ```
@@ -58,13 +72,13 @@ cell types are probit-transformed:
 
 ```{r}
 age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
-model.mat <- model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS)
-beta.op <- solve(t(model.mat) %*% model.mat, t(model.mat))
-H <- model.mat %*% solve(t(model.mat) %*% model.mat, t(model.mat))
+model.mat.cov <- model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS)
+beta.op.cov <- solve(t(model.mat.cov) %*% model.mat.cov, t(model.mat.cov))
+H.cov <- model.mat.cov %*% solve(t(model.mat.cov) %*% model.mat.cov, t(model.mat.cov))
 Y.mat <- qnorm(as.matrix(data.LPS[,(ncol(data.LPS) - 5):ncol(data.LPS)])/100)
-Y.mat.hat <- H %*% Y.mat
-beta.mat <- beta.op %*% Y.mat
-var.vec <- diag( t(Y.mat) %*% Y.mat - t(Y.mat) %*% Y.mat.hat)/(n.ind - ncol(model.mat))
+Y.mat.hat <- H.cov %*% Y.mat
+beta.mat <- beta.op.cov %*% Y.mat
+var.vec <- diag( t(Y.mat) %*% Y.mat - t(Y.mat) %*% Y.mat.hat)/(n.ind - ncol(model.mat.cov))
 
 i = 3
 plot(Y.mat.hat[,i], Y.mat[,i], xlim=range(Y.mat.hat[,i], Y.mat[,i]), ylim=range(Y.mat.hat[,i], Y.mat[,i]))
@@ -98,7 +112,7 @@ H <- model.mat %*% beta.op
 H.perp <- diag(1,ncol(H)) - H
 
 coef.beta <- beta.op %*% t(beta.cell)
-ceof.M <- beta.op %*% t(M.cell)
+coef.M <- beta.op %*% t(M.cell)
 
 SSreg.beta <- apply(beta.cell %*% H, 1, var)
 SSreg.M <- apply(M.cell %*% H, 1, var)
@@ -113,3 +127,45 @@ lines(seq(0,1,length=100), seq(0,1,length=100), col="red")
 ```
 
 From this, it looks like we can use M-values when dealing with confounding due to cell type. It also appears cell type is NOT very dependent on these coefficients, but they may be dependent in other data sets.
+
+## How well does Houseman's method do in predicting cell type?
+
+I now want to look at how well Houseman's method perform's in predicting cell type in comparison to using training data. If it does well, there is no need to use training data. We can just use Houseman's trainin data.
+
+How Tcell prediction differs between Houseman's 2012 method and a simple regression using Hutterite cell proportions (I added Houseman's CD4 and CD8 estimates to get his 'Tcell' proportion)
+```{r}
+House.cell <- data.LPS[(ncol(data.LPS)-12):(ncol(data.LPS)-7)]
+Tcell.house <- House.cell[,1] + House.cell[,2]
+Tcell.act <- data.LPS$Tcell.act
+risk.house <- sum((Tcell.house*100 - Tcell.act)^2)/length(Tcell.act)
+
+Tcell.hat <- H.cov %*% cbind(Tcell.act)
+LOO.cv <- sqrt(mean( (Tcell.act - Tcell.hat)^2/(1 - diag(H.cov))^2 ))
+print(paste0('Average L2 Loss for Houseman Tcells = ', as.character(signif(risk.house, digits=4))))
+print(paste0('Average LOO CV L2 Loss for Regression Tcells = ', as.character(signif(LOO.cv, digits=4))))
+```
+
+Now with Bcells:
+```{r}
+Bcell.house <- House.cell$Bcell
+Bcell.act <- data.LPS$Bcell.act
+B.risk.house <- sum((Bcell.house*100 - Bcell.act)^2)/length(Bcell.act)
+
+Bcell.hat <- H.cov %*% cbind(Bcell.act)
+B.LOO.cv <- sqrt(mean( (Bcell.act - Bcell.hat)^2/(1 - diag(H.cov))^2 ))
+print(paste0('Average L2 Loss for Houseman Bcells = ', as.character(signif(B.risk.house, digits=4))))
+print(paste0('Average LOO CV L2 Loss for Regression Bcells = ', as.character(signif(B.LOO.cv, digits=4))))
+```
+
+## Conclusion
+
+1. Houseman's training data does a poor job in predicting cell type in comparison to a simple linear regression with cell proportion training data.
+
+2. At least in the Hutterite data set, cell proportion looks to be independent of asthma status, age (all individuals were 7-14 years old) and gender. They may be more dependent on covariates for different data sets, however.
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
