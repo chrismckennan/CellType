@@ -92,6 +92,10 @@ hist(stand.effects[6,], xlab='Standardized Monocyte Coefficient at CpG site', ma
 ```
 
 
+## Simulate CpG expression
+
+I will use $\hat{B}$ computed above with the asthma covariate for $B$. Only only have 1 covariate: disease or healthy. To start, I will only use three cell types, Tcell, . 
+
 ## Session information
 
 ```{r info}
