@@ -1,0 +1,1 @@
+###This script contains functions necessary to optimize the log-likelihood of a N(mean, V(mean)), where V(mean) is the multinomial asymptotic variance

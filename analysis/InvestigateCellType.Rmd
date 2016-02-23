@@ -8,8 +8,10 @@ date: 2016-02-05
 
 **Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
 
-```{r chunk-options, include=FALSE}
+```{r chunk-options, include=T}
 source("chunk-options.R")
+source("../R/OptimizeLogLike.R")
+source("../R/OptimizeLogLike_Ksigma.R")
 ```
 
 The purpose of this file is to investigate how cell type is related to the covariates. That is, do we have any hope in predicting cell type given an individuals covariate information. In order to apply our supervised method, we need the variance in cell type among unrelated individuals to be small, given the covariate information.
@@ -25,6 +27,8 @@ library('RefFreeEWAS')
 library('nlme')
 library('corpcor')
 library('sva')
+library('knitr')
+library('printr')
 ```
 
 
@@ -45,7 +49,7 @@ ind.ids.covar <- data.cov$Rowid   #IDs of individuals in complete covariate file
 ```
 
 ## How well do covariates predict cell type
-cell types are on regular 0-1 scale
+Cell types are on regular 0-1 scale
 
 ```{r}
 age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
@@ -66,7 +70,99 @@ t.scores <- sqrt(var.beta.hat) %*% beta.mat %*% diag(1/sqrt(var.vec))
 
 ```
 
-The only statistically significant predictors are the intercept in all regressions (obviously) and the effect on age in 'other' cells. Maybe we can completely ignore the fact that these depend on covariates? They do not appear to depend on them...
+
+##Multivariate Gaussian with Dispersed Multinomial Covariance Structure
+
+The model I fit below assumes that for $p_i = \Omega^T x_i$,
+\[
+c_i \sim N\left(p_i, \Sigma_i\right), \quad \Sigma_i = \text{diag}\left(\sigma_1, \ldots, \sigma_K\right) \left(\text{diag}\left( p_i \right) - p_i p_i^T\right) \text{diag}\left(\sigma_1, \ldots, \sigma_K\right)
+\]
+
+First, I will get an estimate of $\sigma_k^2$ using the above simple univariate regressions. This will be used as a starting point in the optimization procedure. If $v_k$ is the variance in the OLS regression performed above, then $\sigma_k^2 = \frac{v_k}{p(1-p)}$, where $p$ is the cell type proportion. We need this to be small for our optimization/downstream method to perform well.
+```{r Estimate sigma2}
+var.OLS <- var.vec/1e4    #Michelle's proportions were given in %
+ave.hat <- apply(Y.mat.hat, 2, mean)/100   #Average predicted proportion = average measured cell type proportion across individuals
+sigma2.vec <- var.OLS/ave.hat/(1-ave.hat)
+sigma2.0 <- median(sigma2.vec)   #Starting value of sigma^2 for optimization procedure. It corresponds to about 38 observations (a little small, although enough to make the ).
+```
+
+Since our naive estimated $\sigma^2$ is relatively large compared to the measured B cells and monocytes are relatively small (~1% and 0.5%, respectively), we do not have the power to accurately estimate their means. Thereore, we should consider combining them into the 'other' category. Eosinophil's are right on the border of what we have the power to estimate (note that these have been linked to the devlopment of asthma, so it may be crucial that we include them).
+
+In this next part, I will get starting values for the mean. I will pool B cells and Monocytes into the 'Other' category.
+```{r Get Initial Estiamats for the mean}
+pool.cells <- c('Bcell.act', 'Mono.act')
+C <- Y.mat[,! colnames(Y.mat) %in% pool.cells]
+C[,which(colnames(C)=='Other.act')] = C[,which(colnames(C)=='Other.act')] + apply(Y.mat[,colnames(Y.mat) %in% pool.cells], 1, sum)
+C <- C[,-which(colnames(C)=='Other.act')]/100   #C is cell type matrix to be used in optimization
+Omega.0 <- beta.mat[,! colnames(Y.mat) %in% pool.cells]/100
+Omega.0 <- Omega.0[,-which(colnames(Omega.0)=='Other.act')]
+
+age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
+X <- as.matrix(model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS))
+```
+
+Optimize the likelihood using a Newton line-search with $K$ dispersion parameters
+```{r Optimize Likelihood}
+n <- nrow(X)
+d <- ncol(X)
+K <- ncol(C)
+grad.tol <- 1e-10   #Gradient tolerance
+ML <- MaxLike.NewtonLS_Ksigma(X, C, Omega.0, rep(sigma2.0^0.5,K), grad.tol)
+Omega <- ML$Omega    #A covariate x cell type matrix
+FI <- ML$I     #Fisher information matrix at optimum
+cov.theta <- solve(FI)
+sigma <- ML$sigma    #sigma (i.e. #multinomial observations ~ 1/sigma^2)
+mean.cell <- X %*% Omega
+stand.Omega <- Omega/matrix(sqrt(diag(cov.theta)[1:(d*K)]), nrow=d, ncol=K)
+sd.Omega <- matrix(sqrt(diag(cov.theta)[1:(d*K)]), nrow=d, ncol=K)
+colnames(sd.Omega) <- colnames(Omega)
+rownames(sd.Omega) <- rownames(Omega)
+
+tmp.sigma <- matrix(sigma, nrow=1, ncol=K)
+colnames(tmp.sigma) <- paste0('sigma_', as.character((1:K)))
+tmp.pred.sigma <- rbind(Omega[1,])/(sqrt(rbind(Omega[1,]*(1-Omega[1,]))) * tmp.sigma)
+knitr::kable(tmp.sigma, digits=4, caption="Estimates for sigma's", longtable=F)
+knitr::kable(tmp.pred.sigma, digits=4, caption="Standardized Intercepts (i.e. how accurate is our prediction)", longtable=F)
+knitr::kable(head(Omega.0), digits = 4, caption = "Omega using Univariate OLS", longtable=F)
+knitr::kable(head(Omega), digits = 4, caption = "Omega using Multivariate Maximum Likelihood", longtable=F)
+t.scores.table <- t.scores[,! colnames(Y.mat) %in% c('Other.act', pool.cells)]
+colnames(t.scores.table) <- colnames(Omega)
+rownames(t.scores.table) <- rownames(Omega)
+knitr::kable(head(sd.Omega), digits = 4, caption = "SD of Estimated Effects using Fisher Information of ML Estimate", longtable=F)
+knitr::kable(head(stand.Omega), digits = 4, caption = "Standardized Effects using Fisher Information of ML Estimate", longtable=F)
+```
+
+##Are our data overdispersed?
+While the estimate $\hat{\sigma_k}^2_{\text{ML}}$ is the maximum likelihood estimate, I want to make sure the variance of the residuals is not is not larger than we would expect from our ML model (this should not be the case, as our estimated parameters make the data the most 'normal'). Let $\hat{\mu}_i = \hat{\Omega}_{\text{ML}}^T x_i$, $S_i^T S_i = \hat{\Sigma}_i = \hat{\sigma}^2_{\text{ML}}\left[\text{diag}\left( \hat{\mu}_i \right) - \hat{\mu}_i \hat{\mu}_i^T \right]$ and the residual for individual $i$ be $\hat{r}_i = c_i - \hat{\mu}_i$. Then $S_i^{-T} \hat{r}_i$ is approximately $N(0,1)$. Using standard multivariate regression theory, we can estimate the dispersion as
+\[
+\text{disp} = \left(\frac{\text{det}\left( \frac{1}{n-K}\hat{R}^T \hat{R}\right)}{E\det(W_K)}\right)^{1/K}
+\]
+where $W_K \sim \mathcal{W}_K \left( I_K, n-d\right)$. We (obviously) find that there is no dispersion with our estimated parameters.
+
+```{r Estimate Overdispersion}
+Resid <- C - mean.cell
+Stand.Resid <- C - mean.cell
+for (i in 1:n) {
+  p.i <- mean.cell[i,]
+  Sigma.i <- diag(sigma) %*% (diag(p.i) - cbind(p.i) %*% rbind(p.i)) %*% diag(sigma)
+  R.i <- chol(Sigma.i)   #R.i'R.i = Sigma.i
+  Stand.Resid[i,] = as.vector( solve(t(R.i), Resid[i,]) )   #Standardized residuals should be iid N(0,1)
+}
+
+##Look at distribution of det(Wishart) to get an idea how large Stand.Resid are##
+#Note E|W| = n^{-p} * n * ... * (n - p + 1), where W ~ Wishart_p(I_p, n), since n^p|W| ~ \chi^2_n * ... \chi^2_{n-p+1}, where the \chi^2 are independent
+precision.wish <- n
+mean.detW <- exp( sum(log( (precision.wish:(precision.wish - K + 1)) )) ) * precision.wish^(-K)
+disp <- (det(t(Stand.Resid) %*% Stand.Resid/precision.wish) / mean.detW)^(1/K)
+#sigma2.final <- sigma2 * disp
+```
+
+Using the Fisher information at our estimated parameters as an estimate of their covariance, we come to the same conclusion about their significance using the univariate regression (the Fisher information includes the estimate for $\sigma_k^2$). I think this is a feasible method to estimate cell-type, provided we have enough individuals. The only problem is that for Eos.act, $\hat{\sigma_k}_{\text{ML}} = 0.14$, meaning our predictions will protrude through the simplex 93% of the time...
+
+We might be able to use this as a rough estimate for the variance of our predictions. That way, we can determine how much individuals with unobserved cell types will help in our estimation.
+
+##Probit-transform of the data
+The only statistically significant predictors in the univariate regression are the intercept in all regressions (obviously) and the effect on age in 'other' cells. Maybe we can completely ignore the fact that these depend on covariates? They do not appear to depend on them...
 
 cell types are probit-transformed:
 
@@ -163,6 +259,24 @@ print(paste0('Average LOO CV L2 Loss for Regression Bcells = ', as.character(sig
 
 2. At least in the Hutterite data set, cell proportion looks to be independent of asthma status, age (all individuals were 7-14 years old) and gender. They may be more dependent on covariates for different data sets, however.
 
+3. We can estimate cell proportions using a Gaussian model with multinomial likelihood. With enough individuals we can get a good estimate of $\hat{\Omega}$. However, we estimate $\sigma \approx 0.18$, meaning our prediction may portrude through the simplex (see standardized effects table above).
+
+4. We still need to understand how much additional information we can get from individuals with unmeasured cell types to estimate main effects of interest.
+
+
+##How Much Additional Information do we get form Individuals with Unobserved Cell Types?
+We suppose we have two groups of individuals, one with observed cell types and one without cell types. We model both these groups as
+\[
+Y_1 = B_{p \times d}X_1 + L_{p \times k}C_1^T + E_1, \quad Y_1 \in \mathbb{R}^{p \times n_1}
+\]
+\[
+Y_2 = BX_2 + L\Omega_{K \times d}^T X_2 + L\Xi_{K \times n_2} + E_2, \quad Y_2 \in \mathbb{R}^{p \times n_2}.
+\]
+We assume that the columns of $E_i$ are indpendent. For now, $\Xi_{K \times n_2} = \left( \xi_1 \cdots \xi_{n_2} \right)$, where $\xi_i \sim N_K\left( 0,\Sigma_i \right)$, $p_i = \Omega^T_{K \times d}x_i$ and
+\[
+\Sigma_i = \text{diag}\left(\sigma_1, \ldots, \sigma_K\right) \left(\text{diag}\left( p_i \right) - p_i p_i^T\right) \text{diag}\left(\sigma_1, \ldots, \sigma_K\right).
+\]
+We first suppose that $L_{p \times K}$ with rows $\ell_g$, $g = 1, \ldots, p$ and $\Omega_{d \times K}$ are known. We are interested in determining how must additional information $Y_2$ gives us, which can be measured by how much the variance of $\hat{B}$ shrinks with the additional observations.
 
 ## Session information
 
