@@ -63,7 +63,7 @@ col.use <- match(ind.ids.cell, ind.ids.covar)
 beta.cell <- beta.values[,col.use]
 M.cell <- log(beta.cell/(1-beta.cell))
 m <- nrow(M.cell); n <- ncol(M.cell)  #m = #CpG sites; n = #individuals
-model.mat <- model.matrix(~Tcell.act + Bcell.act + Eos.act + Neut.act + Mono.act + asthma, data=data.LPS)
+model.mat <- model.matrix(~Tcell.act + Bcell.act + Eos.act + Neut.act + Mono.act + asthma + sex, data=data.LPS)
 beta.op <- solve(t(model.mat) %*% model.mat, t(model.mat))
 H <- model.mat %*% beta.op
 H.perp <- diag(1,nrow(H)) - H
@@ -84,15 +84,16 @@ Below are plots of the standardized effects for asthma and the six cell types at
 
 ```{r Plot Histograms}
 beta.disease <- stand.effects[7,]   #My disease effects. These are quite large in comparison to the cell effects
-hist(beta.disease, xlab='Standardized Asthma Effect Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
-hist(stand.effects[2,], xlab='Standardized Tcell Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
-hist(stand.effects[3,], xlab='Standardized Bcell Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
-hist(stand.effects[4,], xlab='Standardized Eos cell Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
-hist(stand.effects[5,], xlab='Standardized Neutrophil Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
-hist(stand.effects[6,], xlab='Standardized Monocyte Coefficient at CpG site', main='M-values Regressed onto Asthma status and Cell type', breaks=90)
+hist(beta.disease, xlab='Standardized Asthma Effect Coefficient at CpG site', main='M-values Regressed onto Sex, Asthma status and Cell type', breaks=90)
+hist(stand.effects[8,], xlab='Standardized Sex Effect Coefficient at CpG site', main='M-values Regressed onto Sex, Asthma status and Cell type', breaks=90)
+hist(stand.effects[2,], xlab='Standardized Tcell Coefficient at CpG site', main='M-values Regressed onto Sex, Asthma status and Cell type', breaks=90)
+hist(stand.effects[3,], xlab='Standardized Bcell Coefficient at CpG site', main='M-values Regressed onto Sex, Asthma status and Cell type', breaks=90)
+hist(stand.effects[4,], xlab='Standardized Eos cell Coefficient at CpG site', main='M-values Regressed onto Sex, Asthma status and Cell type', breaks=90)
+hist(stand.effects[5,], xlab='Standardized Neutrophil Coefficient at CpG site', main='M-values Regressed onto Sex, Asthma status and Cell type', breaks=90)
+hist(stand.effects[6,], xlab='Standardized Monocyte Coefficient at CpG site', main='M-values Regressed onto Sex, Asthma status and Cell type', breaks=90)
 ```
 
-
+Note that the sex effect is very large. We would lose a lot of this information if we naively 
 ## Simulate CpG expression
 
 To simulate data, I will use ONLY the covariate disease status and will simulate $B$ from a normal distribution with $\sigma^2$ approximately equal to $\text{Var}\left(\hat{B}\right)$ above. There will be 3 cell types, so the confounding dimension should be only 2. To start, I will use 1,000 CpG sites and 50 indivuduals. Note that $\frac{p}{n} \approx 400$ in real data, so we are giving the method generous numbers.

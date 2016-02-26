@@ -227,7 +227,9 @@ MaxLike.NewtonLS_Ksigma <- function(X, C, Omega_start, sigma_start, tol) {
 		Omega.0 <- Omega.1
 		sigma.0 <- sigma.1
 		grad.0 <- grad.1
+		
+		count <- count + 1
 	}
 	
-	return(list(Omega=Omega.0, sigma=sigma.0, infnorm.grad=norm.grad, I=CompFI_Ksigma(X,C,Omega.0,sigma.0)))	
+	return(list(Omega=Omega.0, sigma=sigma.0, infnorm.grad=norm.grad, I=CompFI_Ksigma(X,C,Omega.0,sigma.0), n.iter = count))	
 }

@@ -90,9 +90,9 @@ Since our naive estimated $\sigma^2$ is relatively large compared to the measure
 
 In this next part, I will get starting values for the mean. I will pool B cells and Monocytes into the 'Other' category.
 ```{r Get Initial Estiamats for the mean}
-pool.cells <- c('Bcell.act', 'Mono.act')
+pool.cells <- c('Bcell.act')
 C <- Y.mat[,! colnames(Y.mat) %in% pool.cells]
-C[,which(colnames(C)=='Other.act')] = C[,which(colnames(C)=='Other.act')] + apply(Y.mat[,colnames(Y.mat) %in% pool.cells], 1, sum)
+C[,which(colnames(C)=='Other.act')] = C[,which(colnames(C)=='Other.act')] + apply(cbind(Y.mat[,colnames(Y.mat) %in% pool.cells]), 1, sum)
 C <- C[,-which(colnames(C)=='Other.act')]/100   #C is cell type matrix to be used in optimization
 Omega.0 <- beta.mat[,! colnames(Y.mat) %in% pool.cells]/100
 Omega.0 <- Omega.0[,-which(colnames(Omega.0)=='Other.act')]
@@ -155,6 +155,7 @@ precision.wish <- n
 mean.detW <- exp( sum(log( (precision.wish:(precision.wish - K + 1)) )) ) * precision.wish^(-K)
 disp <- (det(t(Stand.Resid) %*% Stand.Resid/precision.wish) / mean.detW)^(1/K)
 #sigma2.final <- sigma2 * disp
+#Note that the minimum and maximum eigen values are well within the range of a random Wishart matrix with dimension K and n observations. This does not validate the method, though. It just means we are not too wrong.
 ```
 
 Using the Fisher information at our estimated parameters as an estimate of their covariance, we come to the same conclusion about their significance using the univariate regression (the Fisher information includes the estimate for $\sigma_k^2$). I think this is a feasible method to estimate cell-type, provided we have enough individuals. The only problem is that for Eos.act, $\hat{\sigma_k}_{\text{ML}} = 0.14$, meaning our predictions will protrude through the simplex 93% of the time...
@@ -276,7 +277,96 @@ We assume that the columns of $E_i$ are indpendent. For now, $\Xi_{K \times n_2}
 \[
 \Sigma_i = \text{diag}\left(\sigma_1, \ldots, \sigma_K\right) \left(\text{diag}\left( p_i \right) - p_i p_i^T\right) \text{diag}\left(\sigma_1, \ldots, \sigma_K\right).
 \]
-We first suppose that $L_{p \times K}$ with rows $\ell_g$, $g = 1, \ldots, p$ and $\Omega_{d \times K}$ are known. We are interested in determining how must additional information $Y_2$ gives us, which can be measured by how much the variance of $\hat{B}$ shrinks with the additional observations.
+We first suppose that $L_{p \times K}$ with rows $\ell_g$, $g = 1, \ldots, p$ and $\Omega_{d \times K}$ are known. We are interested in determining how must additional information $Y_2$ gives us, which can be measured by how much the variance of $\hat{B}$ shrinks with the additional observations (*).
+
+As an aside, if $n_1 = 0$, then we are back to the unsupervised scenario. I was originally modeling $\Xi$ as a $MN\left(0, I_K, I_{n_2}\right)$. However, for strong covariates in $X_2$, the vectors $\xi_i$ have non-identical covariance that depends on $X_2$, which invalidates the methodology I had proposed. If, however, there are only a few covariates (like disease vs. non-disease), then we can apply our favorite factor analysis method to get an estimate for $L$ by splitting individuals by diseased and non-diseased.
+
+To study (*), we look at a very simple example. We consider a scenario when the only covariate of interest is disease status (i.e. yes or no covariates). For site $g$, let $\beta_g$ be the $g^{\text{th}}$ row of $B$. Our model is then
+\[
+Y_{1_g} = X_1 \beta_g + C_1 \ell_g + \epsilon_{1_g}
+\]
+\[
+Y_{2_g} = X_2 \beta_g + X_2 \Omega_{d \times K} \ell_g + \Xi^T_{n_2 \times K} \ell_g + \epsilon_{2_g}
+\]
+where $\epsilon_{i_g} \sim N\left(0, \sigma_g^2 I_{n_i}\right)$ and the columns of $\Xi_{K \times n_2}$, $\xi_i$, are distributed as above (with covariance $\Sigma_i$ that depends on $X_2$). If $\Omega$ and $L$ are known, then the variance for individual $i$ in group 1 is $\sigma_g^2$ and if $i$ is in group 2 it is $\sigma_g^2 + \ell_g^T \Sigma_i \ell_g$. Note that individuals remain independent when $\Omega$ and $L$ are known. For simplicity, we assume there are an equal number of diseased and non-diseased individuals in each group. Let $S_j = \text{var}\left(Y_j\right)$, $j = 1,2$. Then
+\[
+\text{var}\left(\hat{\beta}_g\right) = \left( X_1^T S_1^{-1}X_1 + X_2^T S_2^{-1}X_2 \right)^{-1} = \text{diag}\left( \frac{n_1}{2}\sigma_g^{-2} + \sum\limits_{i=1}^{n_2/2}\left( \sigma_g^2 + \ell_g^T \Sigma_i \ell_g\right)^{-1}, \frac{n_1}{2}\sigma_g^{-2} + \sum\limits_{i=n_2/2}^{n_2}\left( \sigma_g^2 + \ell_g^T \Sigma_i \ell_g\right)^{-1}\right)^{-1}
+\]
+\[
+= \text{diag}\left( \frac{n_1}{2}\sigma_g^{-2} + \frac{n_2}{2}\ell_g^T \Sigma_{\text{Asthma}}\ell_g, \frac{n_1}{2}\sigma_g^{-2} + \frac{n_2}{2}\ell_g^T \Sigma_{\text{No Asthma}}\ell_g \right)^{-1}
+\]
+Without the individuals from $Y_2$,
+\[
+\text{var}\left(\hat{\beta}_g\right) = \text{diag}\left( \frac{2}{n_1}\sigma_g^2, \frac{2}{n_1}\sigma_g^2 \right).
+\]
+Therefore, the reduction of the variance of treatment difference is exactly
+\[
+\frac{1}{2}\left( \frac{1}{1 + \frac{n_2}{n_1} \frac{\sigma_g^2}{\alpha_{\text{Asthma}}}} + \frac{1}{1 + \frac{n_2}{n_1} \frac{\sigma_g^2}{\alpha_{\text{No Asthma}}}} \right)
+\]
+where $\alpha_{k} = \sigma_g^2 + \ell_g^T \Sigma_k \ell_g$.
+
+Below, I will estimate $L$ and $\sigma_g^2$ from Michelle's data and use those estimates to determine the reduction of variance.
+
+```{r Determine L and Variance}
+m <- nrow(M.cell)
+X.L <- model.matrix(~Tcell.act + Eos.act + Neut.act + Mono.act + asthma + sex + as.numeric(Age > age.cutoff), data=data.LPS)
+beta.op.L <- solve(t(X.L) %*% X.L, t(X.L))
+H.L <- X.L %*% solve(t(X.L) %*% X.L, t(X.L))
+perp.L <- diag(n) - H.L
+beta.L <- M.cell %*% t(beta.op.L)
+L <- beta.L[,2:5]    #In the orderof Tcell, Eosinophil, Neutrophil, Monocyte
+LO <- L %*% t(Omega)     #This is the potion of the effect due to cell type, i.e. Y = (B + LO)X + E. We want to determine how large B is in relation ot LO. If B is large, then cell type does NOT contribute to confounding
+B <- beta.L[,6:8]
+var.g.vec <- rep(0, m)     #An estimate of sigma^2_g for each site g = 1,...,p
+for (g in 1:m) {
+  tmp.site <- cbind(M.cell[g,])
+  var.g.vec[g] <- as.numeric(t(tmp.site) %*% perp.L %*% tmp.site / (n - ncol(X.L)))
+}
+x.asthma <- cbind(c(1,0,1,0))
+x.nasthma <- cbind(c(1,0,0,0))
+p.asthma <- t(Omega) %*% x.asthma
+p.nasthma <- t(Omega) %*% x.nasthma
+Sigma.asthma <- diag(sigma) %*% (diag(as.vector(p.asthma)) - p.asthma %*% t(p.asthma)) %*% diag(sigma)
+Sigma.nasthma <- diag(sigma) %*% (diag(as.vector(p.nasthma)) - p.nasthma %*% t(p.nasthma)) %*% diag(sigma)
+
+var.cell.asthma <- rep(0,m)    #l' Sigma_asthma l
+var.cell.nasthma <- rep(0,m)    #l' Sigma_noasthma l
+for (g in 1:m) {
+  l.g <- cbind(L[g,])
+  var.cell.asthma[g] <- t(l.g) %*% Sigma.asthma %*% l.g
+  var.cell.nasthma[g] <- t(l.g) %*% Sigma.nasthma %*% l.g
+}
+
+hist(var.g.vec/(var.g.vec + var.cell.asthma), main="Relative Variance of Residuals", ylab="Frequency", xlab="sigma_g^2/(sigma_g^2 + alpha_asthma)")
+```
+
+We conlcude that in THIS data set, the error due to cell type is trivial in comparison to the residual error in our model.
+
+##Determine Proportion of Effect Due to Cell Type
+Recall that in our basice model for methylation,
+\[
+Y_{p \times n} = \left( B + L\Omega^T \right)X + \tilde{E}_{p \times n}.
+\]
+Since we have estimates for $B, L$ and $\Omega$, we can look at the proportion of of the effect due to $B$ and $L$ and use the metric $\frac{\Vert \ell_g \Vert}{\Vert \ell_g + \beta_g \Vert}$. If this is small, we can conclude that cell type is NOT confounding our coefficient estimates (for these data).
+
+```{r Proportion of Effect}
+prop.effect <- rep(0, m)
+for (g in 1:m) {
+  prop.effect[g] <- sqrt( sum(LO[g,2:ncol(LO)] * LO[g,2:ncol(LO)])/sum( c(LO[g,2:ncol(LO)], B[g,])*c(LO[g,2:ncol(LO)], B[g,]) ) )
+}
+hist(prop.effect, breaks=90, main="Propotion of Effect Explained by Cell Type", xlab="Proportion of Effect Explained by Cell Type", ylab="Frequency")
+```
+
+##Conclusions
+1.) We have a probability model to model cell types in individuals. This model has many practical benefits, since the we assume cell proportions are normally distributed with covariance structure related to the multinomial covariance structure. However, this model suffers from a few drawbacks:
+
+&ensp;&ensp;&ensp;i.) For the above estimated covariance structure, our prediction is not gauranteed to lie in the simplex (the smallest marginal probability of it lieing outside is ~0.09).
+
+&ensp;&ensp;&ensp;ii.) We incorrectly assume that the residuals are symmetric for points with mean close to the boundary of the simplex.
+
+2.) Whether or not our covariates determine cell type is very dependent on the data. In Michelle's Hutterite data, we show that covariates are NOT contaminated by cell type and that error due to cell type is negligible (when $L$ and $\Omega$ are known).
+
+Based on this, I would argure a cell type training set is most appropriate to performa analysis. I think we lose too much information and make overly-conservative assumptions in an unsupervised approach.
 
 ## Session information
 
