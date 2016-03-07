@@ -1,0 +1,16 @@
+{
+    "contents" : "---\ntitle: \"Home\"\n---\n\n**Last updated:** `r Sys.Date()`\n\n**Code version:** `r system(\"git log -1 --format='%H'\", intern = TRUE)`\n\n\n## Preliminary data analysis and modelling\n\n*  [Investigate Cell Type Models](InvestigateCellType.html)\n\n*  [Simulate Cell Type Confounding](SimulateCellTypeConfounding.html)\n",
+    "created" : 1457371442949.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1681616548",
+    "id" : "236BC401",
+    "lastKnownWriteTime" : 1457374020,
+    "path" : "~/Desktop/Uchicago/Nicolae/GitWork/CellType/analysis/index.Rmd",
+    "project_path" : "index.Rmd",
+    "properties" : {
+    },
+    "source_on_save" : false,
+    "type" : "r_markdown"
+}
