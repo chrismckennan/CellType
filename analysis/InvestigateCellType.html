@@ -74,8 +74,8 @@ img {
 </div>
 
 
-<p><strong>Last updated:</strong> 2016-02-23</p>
-<p><strong>Code version:</strong> 2bab3f40595a28e94f6faaa77df641e1b44d9a53</p>
+<p><strong>Last updated:</strong> 2016-03-07</p>
+<p><strong>Code version:</strong> e54e83f68a804e4905dc983b26dab2632aebe36f</p>
 <pre class="r"><code>source(&quot;chunk-options.R&quot;)
 source(&quot;../R/OptimizeLogLike.R&quot;)
 source(&quot;../R/OptimizeLogLike_Ksigma.R&quot;)</code></pre>
@@ -213,6 +213,7 @@ ML &lt;- MaxLike.NewtonLS_Ksigma(X, C, Omega.0, rep(sigma2.0^0.5,K), grad.tol)
 Omega &lt;- ML$Omega    #A covariate x cell type matrix
 FI &lt;- ML$I     #Fisher information matrix at optimum
 cov.theta &lt;- solve(FI)
+Hess &lt;- ML$Hessian
 sigma &lt;- ML$sigma    #sigma (i.e. #multinomial observations ~ 1/sigma^2)
 mean.cell &lt;- X %*% Omega
 stand.Omega &lt;- Omega/matrix(sqrt(diag(cov.theta)[1:(d*K)]), nrow=d, ncol=K)
@@ -613,7 +614,7 @@ hist(var.g.vec/(var.g.vec + var.cell.asthma), main=&quot;Relative Variance of Re
 <h2>Determine Proportion of Effect Due to Cell Type</h2>
 <p>Recall that in our basice model for methylation, <span class="math display">\[
 Y_{p \times n} = \left( B + L\Omega^T \right)X + \tilde{E}_{p \times n}.
-\]</span> Since we have estimates for <span class="math inline">\(B, L\)</span> and <span class="math inline">\(\Omega\)</span>, we can look at the proportion of of the effect due to <span class="math inline">\(B\)</span> and <span class="math inline">\(L\)</span> and use the metric <span class="math inline">\(\frac{\Vert \ell_g \Vert}{\Vert \ell_g + \beta_g \Vert}\)</span>. If this is small, we can conclude that cell type is NOT confounding our coefficient estimates (for these data).</p>
+\]</span> Since we have estimates for <span class="math inline">\(B, L\)</span> and <span class="math inline">\(\Omega\)</span>, we can look at the proportion of of the effect due to <span class="math inline">\(B\)</span> and <span class="math inline">\(L\)</span> and use the metric <span class="math inline">\(\frac{\Vert \Omega\ell_g \Vert}{\Vert \Omega\ell_g + \beta_g \Vert}\)</span>. If this is small, we can conclude that cell type is NOT confounding our coefficient estimates (for these data).</p>
 <pre class="r"><code>prop.effect &lt;- rep(0, m)
 for (g in 1:m) {
   prop.effect[g] &lt;- sqrt( sum(LO[g,2:ncol(LO)] * LO[g,2:ncol(LO)])/sum( c(LO[g,2:ncol(LO)], B[g,])*c(LO[g,2:ncol(LO)], B[g,]) ) )
@@ -628,6 +629,103 @@ hist(prop.effect, breaks=90, main=&quot;Propotion of Effect Explained by Cell Ty
 <p>   ii.) We incorrectly assume that the residuals are symmetric for points with mean close to the boundary of the simplex.</p>
 <p>2.) Whether or not our covariates determine cell type is very dependent on the data. In Michelle’s Hutterite data, we show that covariates are NOT contaminated by cell type and that error due to cell type is negligible (when <span class="math inline">\(L\)</span> and <span class="math inline">\(\Omega\)</span> are known).</p>
 <p>Based on this, I would argure a cell type training set is most appropriate to performa analysis. I think we lose too much information and make overly-conservative assumptions in an unsupervised approach.</p>
+</div>
+<div id="investigating-test-statistics" class="section level2">
+<h2>Investigating Test Statistics</h2>
+<p>In this next part I will investigate possible test statistics, given that we have cell type information on some of the individuals individuals, but not all. Suppose there are <span class="math inline">\(n_1\)</span> individuals who’s cell type is known and <span class="math inline">\(n_2\)</span> with unknown cell type. Recall that for <span class="math inline">\(C_2 = X_2^T \Omega + \Xi^T\)</span>, the model is <span class="math display">\[
+Y_1 = B_{p \times d} X_1 + L_{p \times K}C_1^T + E_1
+\]</span> <span class="math display">\[
+Y_2 = BX_2 + L\Omega^T X_2  + L\Xi_{K \times n_2} + E_2
+\]</span> where <span class="math inline">\(X_i \in \mathbb{R}^{d \times n_i}\)</span>, <span class="math inline">\(C_1 \in \mathbb{R}^{n_1 \times K}\)</span>, <span class="math inline">\(\Omega \in \mathbb{R}^{d \times K}\)</span> and <span class="math inline">\(E_i \sim MN_{p \times n_i}\left(0, \Sigma_{p \times p}, I_{n_i}\right)\)</span>. Further, for <span class="math inline">\(l\)</span> the log-likelihood function of <span class="math inline">\(p\left( C_1 \mid \Omega \right)\)</span>, define <span class="math display">\[
+-\left(\nabla^2 l\left(\text{vec}_{\text{cols}}(\Omega)\right) \mid_{\hat{\Omega}_{\text{MLE}}}\right)^{-1} = \left[\begin{matrix}
+S_{11} &amp; \cdots &amp; S_{1K}\\
+\vdots &amp; \ddots &amp; \vdots\\
+S_{K1} &amp; \cdots &amp; S_{KK}
+\end{matrix}\right],
+\]</span> <span class="math display">\[
+S_i = \left[\begin{matrix}
+x_i^T S_{11} x_i &amp; \cdots &amp; x_i^T S_{1K} x_i\\
+\vdots &amp; \ddots &amp; \vdots\\
+x_i^T S_{K1} x_i &amp; \cdots &amp; x_i^T S_{KK} x_i
+\end{matrix}\right]
+\]</span> and <span class="math display">\[
+S_{i \times j} = \left[\begin{matrix}
+x_i^T S_{11} x_j &amp; \cdots &amp; x_i^T S_{1K} x_j\\
+\vdots &amp; \ddots &amp; \vdots\\
+x_i^T S_{K1} x_j &amp; \cdots &amp; x_i^T S_{KK} x_j
+\end{matrix}\right]
+\]</span> and <span class="math display">\[
+\Xi_{K \times n_2} = \left( \xi_1 \cdots \xi_{n_2} \right) \quad \xi_i \sim N_K\left( 0, R_i \right)
+\]</span> where <span class="math inline">\(R_i\)</span> is the natural variance about the mean cell type and depends on <span class="math inline">\(\Omega^T x_i\)</span>, the mean cell type proportions for individual <span class="math inline">\(i\)</span>.</p>
+<p>In the estimation procedure, we want to CONDITION ON <span class="math inline">\(C_1\)</span>, since these cell type data will presumably be from individuals with methylation data (that we obviously want to utilize). The estimation procedure would then be:</p>
+<p>1.) Use <span class="math inline">\(C_1\)</span> to estimate <span class="math inline">\(\Omega\)</span> via maximum likelihood using the model multivariate normal model <span class="math display">\[
+C_1 = X_1^T \Omega + \Xi_1.
+\]</span> Call the maximum likelihood estimate <span class="math inline">\(\hat{\Omega}_{\text{MLE}}\)</span> (code for this procedure has been implemented and tested). Note that since we are conditioning on <span class="math inline">\(C_1\)</span>, we cannot use the Fisher information matrix as a measure of our uncertainty of <span class="math inline">\(\hat{\Omega}_{\text{MLE}}\)</span>. Instead, we would like to estimate the posterior distribution <span class="math inline">\(p\left(\Omega \mid C_1,X_1 \right) \propto p\left( C_1 \mid \Omega,X_1\right)p(\Omega \mid X_1)\)</span>. Since <span class="math inline">\(\Omega \mid X_1\)</span> is constrained to the interior of the simplex, our prior on <span class="math inline">\(\Omega \mid X_1\)</span> is uniform over the interior of the simplex and 0 outside of it. Therefore, <span class="math display">\[
+p\left(\Omega \mid C_1,X_1 \right) \propto p\left( C_1 \mid \Omega,X_1\right).
+\]</span> where we have that for <span class="math inline">\(l\left( \Omega \mid C_1, X_1\right) = \log p\left( C_1 \mid \Omega,X_1\right)\)</span>, <span class="math display">\[
+l\left( \Omega \mid C_1, X_1\right) = l\left(\hat{\Omega}_{\text{MLE}} \mid C_1, X_1 \right) + \frac{1}{2}\left( \Omega - \hat{\Omega}_{\text{MLE}}\right)^T \nabla^2_{\Omega} l\left(\hat{\Omega}_{\text{MLE}} \right)\left( \Omega - \hat{\Omega}_{\text{MLE}}\right) + o\left( \Vert \Omega - \hat{\Omega}_{\text{MLE}} \Vert^2\right).
+\]</span> Therefore, provided <span class="math inline">\(l\left( \Omega \mid C_1, X_1\right)\)</span> is concave, (or at least the likelihood of other modes goes down to 0 as <span class="math inline">\(n_1 \to \infty\)</span>), then <span class="math display">\[
+p\left(\Omega \mid C_1,X_1 \right) \approx N\left( \hat{\Omega}_{\text{MLE}}, -\left( \nabla^2_{\Omega} l\left(\hat{\Omega}_{\text{MLE}} \right) \right)^{-1} \right).
+\]</span> Note that if we restrict ourselves to an <span class="math inline">\(\epsilon\)</span> region AWAY from the boundary of the simplex, then I am confident we can show that for <span class="math inline">\(n_1\)</span> large enough the log-likelihood <span class="math inline">\(l\left( \Omega \mid C_1, X_1\right)\)</span> is concave in this region (with high probability). I then propose we use <span class="math display">\[
+\Omega \mid C_1,X_1 \sim N\left( \hat{\Omega}_{\text{MLE}}, -\left( \nabla^2_{\Omega} l\left(\hat{\Omega}_{\text{MLE}} \right) \right)^{-1} \right)
+\]</span> as the posterior distribution of <span class="math inline">\(\Omega \mid C_1, X_1\)</span> in order to estimate our uncertainty in the estimate <span class="math inline">\(\hat{\Omega}_{\text{MLE}}\)</span>. This is very important when computing the variance of our estimator <span class="math inline">\(\hat{B}\)</span> with small <span class="math inline">\(n_1\)</span>.</p>
+<p>2.) Let <span class="math inline">\(V_{X_1}\)</span> be an orthonormal basis for the kernel of <span class="math inline">\(X_1\)</span>, which has <span class="math inline">\(n_1 - d\)</span> dimensions. Let <span class="math display">\[
+\tilde{Y}_1 = Y_1 V_{X_1} = L C_1^T V_{X_1} + \underbrace{\tilde{E}_1}_{MN_{p \times n_1 - d}\left(0, \Sigma, I_{n_1 - d} \right)}
+\]</span> and estimate <span class="math inline">\(L\)</span> on <span class="math inline">\(n_1 - d - K\)</span> degrees of freedom. Call the estimate <span class="math inline">\(\hat{L}\)</span>. Note that we can also get an estimate for <span class="math inline">\(\hat{\Sigma}_{p \times p}\)</span>, assuming it is diagonal. Note that we could also get an estimate of <span class="math inline">\(\hat{L}\)</span> and <span class="math inline">\(\hat{\Sigma}\)</span> via OLS, including <span class="math inline">\(X_1\)</span> as a covariate. In the first case <span class="math display">\[
+\hat{L} \mid C_1,X_1 \sim MN_{p \times K}\left( L,\Sigma_p,\left( C_1^T V_{X_1} V_{X_1}^T C_1\right)^{-1} \right)
+\]</span> and in the second case (i.e. OLS to find <span class="math inline">\(\hat{L}, \hat{B}\)</span>), <span class="math inline">\(\hat{L} = Y_1 P_{X_1^T}^{\perp} C_1 D^{-1}\)</span> and <span class="math display">\[
+\hat{L} \mid C_1,X_1 \sim MN_{p \times K}\left( L,\Sigma_p,\left( C_1^T P_{X_1^T}^{\perp} C_1\right)^{-1} \right)
+\]</span> where <span class="math inline">\(D = C_1^T P^{\perp}_{X_1^T}C_1\)</span> and <span class="math inline">\(P^{\perp}_{X_1^T}\)</span> is the projection matrix onto the orhtogonal compliment of the columns of <span class="math inline">\(X_1^T\)</span>. Therefore, the two estimators are the SAME. Note that <span class="math inline">\(\hat{L}\)</span> is an unbiased estimator of <span class="math inline">\(L\)</span>.</p>
+<p>3.) Let <span class="math inline">\(V_{C_1^T}\)</span> be a basis for the kernel of <span class="math inline">\(C_1^T\)</span>, which has dimension <span class="math inline">\(n_2 - K\)</span>. Denote <span class="math display">\[
+Z_1 = Y_1 V_{C_1^T} \mid C_1, X_1, X_2 \sim MN_{p \times n_1 - K}\left(BX_1 V_{C_1^T}, \Sigma, I_{n_1 - K} \right)
+\]</span></p>
+<p>4.) Let <span class="math inline">\(Z_2 = Y_2 - \hat{L}\hat{\Omega}_{\text{MLE}} X_2\)</span> be the residuals after removing the effect of the predicted mean cell type. If we condition on <span class="math inline">\(C_1\)</span>, <span class="math inline">\(\Omega\)</span> is random. In this procedure, we assume that <span class="math inline">\(\Omega \mid C_1\)</span> and <span class="math inline">\(\hat{L} \mid C_1\)</span> are INDEPENDENT. We then have that <span class="math inline">\(Z_1\)</span> and <span class="math inline">\(Z_2\)</span> are unbiased estimators for <span class="math inline">\(BX_1 V_{C_1^T}\)</span> and <span class="math inline">\(BX_2\)</span>: <span class="math display">\[
+E\left( Z_1 \mid C_1, X_1, X_2 \right) = BX_1 V_{C_1^T}
+\]</span> <span class="math display">\[
+E\left(Z_2 \mid C_1, X_1, X_2 \right) = BX_2 + L\hat{\Omega}_{\text{MLE}}^T X_2 - L\hat{\Omega}_{\text{MLE}}^T X_2 = BX_2.
+\]</span> We then must compute the VARIANCE of <span class="math inline">\(\left[ \begin{matrix} Z_1 &amp; Z_2 \end{matrix} \right]\)</span>:</p>
+<p>i.) <span class="math inline">\(\text{Var}\left( Z_1 \mid C_1, X_1, X_2 \right)\)</span>: <span class="math display">\[
+\text{Var}\left( Z_1 \mid C_1, X_1, X_2 \right) = \Sigma_p \otimes I_{n_1 - K}
+\]</span> ii.) <span class="math inline">\(\text{Var}\left( Z_2 \mid C_1, X_1, X_2 \right)\)</span>: <span class="math display">\[
+\text{Var}\left( \underbrace{\left( Z_2 \right)_i}_{\text{$i^{\text{th}}$ column of $Z_2$}} \mid C_1, X_1, X_2 \right) = \text{Var}\left( \left( Y_2 \right)_i - \hat{L} \hat{\Omega}_{\text{MLE}}^T x_i \mid C_1, X_1, X_2\right) = \text{Var}\left( \left( L\Omega^T-\hat{L}\hat{\Omega}_{\text{MLE}}^T \right) x_i  + L \xi_i + \left( E_2 \right)_i \mid C_1, X_1, X_2 \right)
+\]</span> <span class="math display">\[
+= \text{Var}\left( \left( L\Omega^T-\hat{L}\hat{\Omega}_{\text{MLE}}^T \right) x_i  + L \xi_i \mid C_1, X_1, X_2 \right) + \Sigma_{p \times p} = E_{\Omega}\text{Var}\left( \left( L\Omega^T-\hat{L}\hat{\Omega}_{\text{MLE}}^T \right) x_i  + L \xi_i \mid C_1, X_1, X_2, \Omega \right) + \cdots
+\]</span> <span class="math display">\[
+\cdots \text{Var}_{\Omega} E \left[ \left( L\Omega^T-\hat{L}\hat{\Omega}_{\text{MLE}}^T \right) x_i  + L \xi_i \mid C_1, X_1, X_2, \Omega \right] + \Sigma_{p \times p} = \Sigma_{p \times p}  x_i^T \hat{\Omega}_{\text{MLE}} \left( C_1^T P^{\perp}_{X_1^T} C_1 \right)^{-1}\hat{\Omega}_{\text{MLE}}^T x_i + \cdots
+\]</span> <span class="math display">\[
+\cdots L E\left[ R_i\left( \Omega^T x_i \right) \mid C_1, X_1, X_2 \right]L^T + L S_i L^T = \Sigma_p \left[ 1 + x_i^T \hat{\Omega}_{\text{MLE}} \left( C_1^T P^{\perp}_{X_1^T} C_1 \right)^{-1}\hat{\Omega}_{\text{MLE}}^T x_i \right] + L\left( E\left[ R_i\left( \Omega^T x_i \right) \mid C_1, X_1, X_2 \right] + S_i \right)L^T
+\]</span> And, <span class="math display">\[
+\text{Cov}\left( \left( Z_2 \right)_i, \left( Z_2 \right)_j \mid C_1, X_1, X_2 \right) = \text{Cov}\left( \left( L - \hat{L} \right)\Omega^T x_i + L \xi_i + \left( E_2 \right)_i, \left( L - \hat{L} \right)\Omega^T x_j + L \xi_j + \left( E_2 \right)_j \mid C_1, X_1, X_2 \right)
+\]</span> <span class="math display">\[
+ \underbrace{=}_{\text{Same procedure as above}} L S_{i \times j} L^T + \Sigma_p\left[ x_i^T \hat{\Omega}_{\text{MLE}} \left( C_1^T P^{\perp}_{X_1^T} C_1 \right)^{-1}\hat{\Omega}_{\text{MLE}}^T x_j \right]
+\]</span></p>
+<p>iii.) <span class="math inline">\(\text{Cov}\left( Z_1, Z_2 \mid C_1, X_1, X_2 \right)\)</span>: <span class="math display">\[
+\text{Cov}\left( Z_1, Z_2 \mid C_1, X_1, X_2 \right) \underbrace{=}_{\text{Steps Omitted}} - \Sigma_{p \times p} \otimes \left[ V_{C_1^T}^T P^{\perp}_{X_1^T} C_1 \left( C_1^T P^{\perp}_{X_1^T} C_1 \right)^{-1} \hat{\Omega}_{\text{MLE}} X_2 \right]
+\]</span></p>
+<p>These calculations make sense, since in the limit as <span class="math inline">\(n_1, n_2 \to \infty\)</span>, the covariance between columns disappears and we are left with a variance term that we would use if we knew <span class="math inline">\(L\)</span> and <span class="math inline">\(\Omega\)</span>.</p>
+<p>5.) Using the above calculations, we can compute the covariance matrix <span class="math inline">\(U_g \in \mathbb{R}^{\left( n_1 -K + n_2 \right) \times \left( n_1 -K + n_2 \right)}\)</span> for a single site <span class="math inline">\(g\)</span> across individuals. If <span class="math inline">\(\beta_g\)</span> is the <span class="math inline">\(g^{\text{th}}\)</span> row of <span class="math inline">\(B \in \mathbb{R}^{p \times d}\)</span>, <span class="math inline">\(\ell_g\)</span> the <span class="math inline">\(g^{\text{th}}\)</span> row of <span class="math inline">\(L \mathbb{R}^{p \times K}\)</span> and <span class="math inline">\(Y_i^{(g)}\)</span> the <span class="math inline">\(i^{\text{th}}\)</span> row of <span class="math inline">\(Y_i \in \mathbb{R}^{p \times n_i}\)</span>, then <span class="math display">\[
+\hat{\beta}_g = \left( \left[ \begin{matrix}
+X_1 V_{C_1^T} &amp; X_2
+\end{matrix} \right] U_g^{-1} \left[ \begin{matrix}
+V_{C_1^T}^T X_1^T\\
+X_2^T
+\end{matrix} \right]\right)^{-1} \left[ \begin{matrix}
+X_1 V_{C_1^T} &amp; X_2
+\end{matrix} \right] U_g^{-1} \left[ \begin{matrix}
+Y_1^{(g)} V_{C_1^T}^T\\
+Y_2^{(g)} - X_2^T \hat{\Omega}_{\text{MLE}} \hat{\ell}_g
+\end{matrix} \right]
+\]</span> where <span class="math display">\[
+E \hat{\beta}_g = \beta_g
+\]</span> and <span class="math display">\[
+\text{Var}\left( \hat{\beta}_g \mid C_1, X_1, X_2 \right) = \left( \left[ \begin{matrix}
+X_1 V_{C_1^T} &amp; X_2
+\end{matrix} \right] U_g^{-1} \left[ \begin{matrix}
+V_{C_1^T}^T X_1^T\\
+X_2^T
+\end{matrix} \right]\right)^{-1} \stackrel{n_1,n_2 \to \infty}{\longrightarrow} \left( \sigma_g^{-2} X_1 P^{\perp}_{C_1^T} X_1^T + \left( \sigma_g^2 + \ell_g^T R_i \ell_g \right)^{-1} X_2 X_2^T \right)^{-1}.
+\]</span> Note that if we find that the cell proportions are uncorrelated with methylation, then <span class="math inline">\(\ell_g\)</span> would be negligible in comparison to <span class="math inline">\(\sigma_g^2\)</span>, which would be the standard regression problem where <span class="math inline">\(B\)</span> was the only coefficient. I think I can also prove that the under regularity conditions, the asymptotic distrubution for <span class="math inline">\(\hat{\beta}_g\)</span> is normally distributed.</p>
+<p>Note that we can also simultaneously compute GLS estimates for the multiple sites coefficient vector <span class="math inline">\(\left[ \begin{matrix} \beta_{g_1}\\ \vdots\\ \beta_{g_m} \end{matrix} \right]\)</span> if we assume that <span class="math inline">\(\Sigma_{p \times p}\)</span> is diagonal. The analytic form is a bit messy, however.</p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
