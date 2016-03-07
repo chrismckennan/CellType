@@ -8,4 +8,4 @@ title: "About"
 
 [Chris McKennan][github-io] Second year PhD student in the UChicago STAT department.
 
-[github-io]: https://github.com/stephenslab/Trans-eQTL
+[github-io]: https://github.com/chrismckennan/CellType
