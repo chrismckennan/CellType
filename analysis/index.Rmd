@@ -1,0 +1,14 @@
+---
+title: "Home"
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+
+## Preliminary data analysis and modelling
+
+*  [Investigate Cell Type Models](InvestigateCellType.html)
+
+*  [Simulate Cell Type Confounding](SimulateCellTypeConfounding.html)

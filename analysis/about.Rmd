@@ -1,0 +1,11 @@
+---
+title: "About"
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+[Chris McKennan][github-io] Second year PhD student in the UChicago STAT department.
+
+[github-io]: https://github.com/stephenslab/Trans-eQTL
