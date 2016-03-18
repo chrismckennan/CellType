@@ -53,7 +53,7 @@ Cell types are on regular 0-1 scale
 
 ```{r}
 age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
-model.mat.cov <- model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS)
+model.mat.cov <- model.matrix(~sex + asthma + as.numeric(Age), data=data.LPS)
 beta.op.cov <- solve(t(model.mat.cov) %*% model.mat.cov, t(model.mat.cov))
 H.cov <- model.mat.cov %*% solve(t(model.mat.cov) %*% model.mat.cov, t(model.mat.cov))
 Y.mat <- as.matrix(data.LPS[,(ncol(data.LPS) - 5):ncol(data.LPS)])
@@ -98,7 +98,7 @@ Omega.0 <- beta.mat[,! colnames(Y.mat) %in% pool.cells]/100
 Omega.0 <- Omega.0[,-which(colnames(Omega.0)=='Other.act')]
 
 age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
-X <- as.matrix(model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS))
+X <- as.matrix(model.matrix(~sex + asthma + as.numeric(Age), data=data.LPS))
 ```
 
 Optimize the likelihood using a Newton line-search with $K$ dispersion parameters
@@ -106,7 +106,7 @@ Optimize the likelihood using a Newton line-search with $K$ dispersion parameter
 n <- nrow(X)
 d <- ncol(X)
 K <- ncol(C)
-grad.tol <- 1e-10   #Gradient tolerance
+grad.tol <- 1e-8   #Gradient tolerance
 ML <- MaxLike.NewtonLS_Ksigma(X, C, Omega.0, rep(sigma2.0^0.5,K), grad.tol)
 Omega <- ML$Omega    #A covariate x cell type matrix
 FI <- ML$I     #Fisher information matrix at optimum
@@ -489,7 +489,7 @@ And,
 
 iii.) $\text{Cov}\left( Z_1, Z_2 \mid C_1, X_1, X_2 \right)$:
 \[
-\text{Cov}\left( Z_1, Z_2 \mid C_1, X_1, X_2 \right) \underbrace{=}_{\text{Steps Omitted}} - \Sigma_{p \times p} \otimes \left[ V_{C_1^T}^T P^{\perp}_{X_1^T} C_1 \left( C_1^T P^{\perp}_{X_1^T} C_1 \right)^{-1} \hat{\Omega}_{\text{MLE}} X_2 \right]
+\text{Cov}\left( Z_1, Z_2 \mid C_1, X_1, X_2 \right) \underbrace{=}_{\text{Steps Omitted}} - \Sigma_{p \times p} \otimes \left[ V_{C_1^T}^T P^{\perp}_{X_1^T} C_1 \left( C_1^T P^{\perp}_{X_1^T} C_1 \right)^{-1} \hat{\Omega}_{\text{MLE}}^T X_2 \right]
 \]
 
 These calculations make sense, since in the limit as $n_1, n_2 \to \infty$, the covariance between columns disappears and we are left with a variance term that we would use if we knew $L$ and $\Omega$.
@@ -528,6 +528,50 @@ Note that we can also simultaneously compute GLS estimates for the multiple site
 \vdots\\
 \beta_{g_m}
 \end{matrix} \right]$ if we assume that $\Sigma_{p \times p}$ is diagonal. The analytic form is a bit messy, however.
+
+## Estimate Covariance as a Function of $n_1$
+Here I want to use the above analysis to attempt the determine how large $n_1$ would need to be to get a good estiamte of the variance. I will treat $R_i$ (the natural error that exists in cell type prediction) as fixed and known. I will estimate $S_i$ with the Fisher Information matrix, which I have an analytic description for (all I need is additional covariates $x$ to get smaller predictive variance). I will assume we have 700 total observations and up to 100 of them have observed cell type proportions.
+
+1.) Compare $R_i$ and $S_i$ for different values of $n_1$. Note that $R_i$ remains constant when $n_1$ changes.
+
+```{r RiANDSi}
+n.vec <- c(n+1, 50, 100)
+n.total <- 62
+X.unique <- uniquecombs(X)   #Contains unique entries of X
+for (s in 1:n.vec) {
+  n.1 <- n.vec[s]
+  n.2 <- n.total - n.1
+
+  ind.1 <- sample(1:n, n.1 - n, replace=T)   #Which observations I use in addition to what I have
+  X.append <- X[ind.1,]
+  C.append <- C[ind.1,]
+  X.1 <- rbind(X, X.append)
+  C.1 <- rbind(C, C.append)  
+  
+  ind.2 <- sample(1:n, n.2, replace=T)
+  X.2 <- X[ind.2,]
+  C.2 <- C[ind.2,]  
+  
+  cov.Omega.s <- solve(CompFI_Ksigma(X.1, Omega, sigma))[1:(d*K), 1:(d*K)]
+  
+  perp.X1 <- diag(n.1) - X.1 %*% solve(t(X.1)%*%X.1, t(X.1))
+  kern.C1 <- qr.Q( qr( cbind(svd(t(C.1))$v, diag(n.1)) ) )[,(K+1):n.1]
+  X.1.tilde <- t(kern.C1) %*% X.1
+  
+  var.top <- diag(n.1 - K)
+  var.left <- -t(kern.C1) %*% perp.X1 %*% C.1 %*% solve(t(C.1) %*% perp.X1 %*% C.1) %*% t(Omega) %*% t(X.2)
+  var.bott <- diag(n.2) + X.2 %*% Omega %*% solve(t(C.1) %*% perp.X1 %*% C.1) %*% t(Omega) %*% t(X.2)
+  var.mat <- rbind( cbind(var.top, var.left), cbind(t(var.left), var.bott) )
+  X.total <- rbind(X.1.tilde, X.2)
+  L0.full <- solve( t(X.total) %*% solve(var.mat) %*% X.total )
+  L0.1 <- solve(t(X.1.tilde) %*% X.1.tilde)
+  L0.2 <- solve(t(X.2) %*% solve(var.bott) %*% X.2)
+  for (i in 1:n) {
+    
+  }
+}
+```
+
 
 ## Session information
 

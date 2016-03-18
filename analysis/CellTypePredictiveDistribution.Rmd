@@ -1,0 +1,144 @@
+---
+title: "Investigate Modes of Normal Likelihood with Multinomial Variance"
+author: "Chris McKennan"
+date: 2016-03-09
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=T}
+source("chunk-options.R")
+source("../R/OptimizeLogLike.R")
+source("../R/OptimizeLogLike_Ksigma.R")
+```
+
+Here we investigate the modes of the multivariate normal with multinomial covariance. I want to see how large the other likelihood modes are. I believe the mode close to the OLS estimate for $\Omega$ is the global mode. This is important, since if there are other significantly large modes, we cannot use the Bayesian central limit theorem to estimate the posterior distribution of $\Omega \mid C_1$.
+
+## Load required functions
+
+```{r}
+library(minfi)
+library('IlluminaHumanMethylation450kmanifest')
+library('IlluminaHumanMethylation450kanno.ilmn12.hg19')
+library('FlowSorted.Blood.450k')      ##Methylation data on 6 males, 10 cell types; RGset object
+library('RefFreeEWAS')
+library('nlme')
+library('corpcor')
+library('sva')
+library('knitr')
+library('printr')
+```
+
+
+## Get data into R
+
+Get the data into R and initialize global variables.
+
+```{r}
+path.LPS.kids <- '/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/HTkids_cellprop/HTkids_LPS_covar_ImpAct_10115.txt'
+path.methylation <- '/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/Hutterite_Methylation_data/Meth_covar_allsamp_impcells_10115.txt'
+data.cov <- data.frame(read.table(path.methylation, sep="\t", quote="\"", dec=".", header=T, check.names=F))
+data.LPS <- data.frame(read.table(path.LPS.kids, sep="\t", quote="\"", dec=".", header=T, check.names=F))
+cell.names <- colnames(data.LPS)[(ncol(data.LPS) - 5):ncol(data.LPS)]
+n.cells <- length(cell.names)
+n.ind <- nrow(data.LPS)
+ind.ids.cell <- data.LPS$Rowid    #IDs of individuals with cell type data
+ind.ids.covar <- data.cov$Rowid   #IDs of individuals in complete covariate file
+```
+
+## How well do covariates predict cell type
+Cell types are on regular 0-1 scale
+
+```{r}
+age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
+model.mat.cov <- model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS)
+beta.op.cov <- solve(t(model.mat.cov) %*% model.mat.cov, t(model.mat.cov))
+H.cov <- model.mat.cov %*% solve(t(model.mat.cov) %*% model.mat.cov, t(model.mat.cov))
+Y.mat <- as.matrix(data.LPS[,(ncol(data.LPS) - 5):ncol(data.LPS)])
+Y.mat.hat <- H.cov %*% Y.mat
+beta.mat <- beta.op.cov %*% Y.mat
+var.vec <- diag( t(Y.mat) %*% Y.mat - t(Y.mat) %*% Y.mat.hat)/(n.ind - ncol(model.mat.cov))
+
+i = 3
+plot(Y.mat.hat[,i], Y.mat[,i], xlim=range(Y.mat.hat[,i], Y.mat[,i]), ylim=range(Y.mat.hat[,i], Y.mat[,i]))
+lines(seq(0,100, 100), seq(0, 100, 100))
+
+var.beta.hat <- diag(1/diag(solve(t(model.mat.cov) %*% model.mat.cov)))
+t.scores <- sqrt(var.beta.hat) %*% beta.mat %*% diag(1/sqrt(var.vec))
+
+```
+
+
+##Get Initial Fit of the Data
+
+The model I fit below assumes that for $p_i = \Omega^T x_i$,
+\[
+c_i \sim N\left(p_i, \Sigma_i\right), \quad \Sigma_i = \text{diag}\left(\sigma_1, \ldots, \sigma_K\right) \left(\text{diag}\left( p_i \right) - p_i p_i^T\right) \text{diag}\left(\sigma_1, \ldots, \sigma_K\right)
+\]
+
+First, I will get an estimate of $\sigma_k^2$ using the above simple univariate regressions. This will be used as a starting point in the optimization procedure. If $v_k$ is the variance in the OLS regression performed above, then $\sigma_k^2 = \frac{v_k}{p(1-p)}$, where $p$ is the cell type proportion. We need this to be small for our optimization/downstream method to perform well.
+```{r Estimate sigma2}
+var.OLS <- var.vec/1e4    #Michelle's proportions were given in %
+ave.hat <- apply(Y.mat.hat, 2, mean)/100   #Average predicted proportion = average measured cell type proportion across individuals
+sigma2.vec <- var.OLS/ave.hat/(1-ave.hat)
+sigma2.0 <- median(sigma2.vec)   #Starting value of sigma^2 for optimization procedure. It corresponds to about 38 observations (a little small, although enough to make the ).
+```
+
+Since our naive estimated $\sigma^2$ is relatively large compared to the measured B cells and monocytes are relatively small (~1% and 0.5%, respectively), we do not have the power to accurately estimate their means. Thereore, we should consider combining them into the 'other' category. Eosinophil's are right on the border of what we have the power to estimate (note that these have been linked to the devlopment of asthma, so it may be crucial that we include them).
+
+In this next part, I will get starting values for the mean. I will pool B cells and Monocytes into the 'Other' category.
+```{r Get Initial Estiamats for the mean}
+pool.cells <- c('Bcell.act')
+C <- Y.mat[,! colnames(Y.mat) %in% pool.cells]
+C[,which(colnames(C)=='Other.act')] = C[,which(colnames(C)=='Other.act')] + apply(cbind(Y.mat[,colnames(Y.mat) %in% pool.cells]), 1, sum)
+C <- C[,-which(colnames(C)=='Other.act')]/100   #C is cell type matrix to be used in optimization
+Omega.0 <- beta.mat[,! colnames(Y.mat) %in% pool.cells]/100
+Omega.0 <- Omega.0[,-which(colnames(Omega.0)=='Other.act')]
+
+age.cutoff <- 11    ##People ages <= age.cutoff are in one group, > age.cutoff are in another (pre-puberty and puberty)
+X <- as.matrix(model.matrix(~sex + asthma + as.numeric(Age > age.cutoff), data=data.LPS))
+```
+
+Optimize the likelihood using a Newton line-search with $K$ dispersion parameters
+```{r Optimize Likelihood}
+n <- nrow(X)
+d <- ncol(X)
+K <- ncol(C)
+grad.tol <- 1e-8   #Gradient tolerance
+ML <- MaxLike.NewtonLS_Ksigma(X, C, Omega.0, rep(sigma2.0^0.5,K), grad.tol)
+Omega <- ML$Omega    #A covariate x cell type matrix
+FI <- ML$I     #Fisher information matrix at optimum
+cov.theta <- solve(FI)
+Hess <- ML$Hessian
+sigma <- ML$sigma    #sigma (i.e. #multinomial observations ~ 1/sigma^2)
+```
+
+##Simulate Starting Points to Determine Modes of Likelihood Function
+
+```{r DetermineModes}
+B <- 100
+Modes <- rep(NA, B)
+rho <- 3/4
+Omega.center <- Omega
+for (b in 8:B) {
+  dir.b <- as.vector( rbind(rnorm(K), 0.01*rnorm(K), 0.01*rnorm(K), 0.1*rnorm(K)) )
+  count.check <- 0
+  while(!CheckBound(X, Omega.center, dir.b) && count.check < 200) {
+		dir.b <- rho*dir.b
+		count.check <- count.check + 1
+	}
+  Omega.b <- Omega.center + matrix(dir.b, nrow=d, ncol=K)
+  ML.b <- MaxLike.NewtonLS_Ksigma(X, C, Omega.b, sigma.0, grad.tol)
+  Modes[b] <- ML.b$LL
+  Omega.center <- Omega.b
+}
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
