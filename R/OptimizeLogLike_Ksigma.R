@@ -10,7 +10,7 @@
 #sigma = (sigma_1, ..., sigma_K) is the standard deviation
 #The difference between this script and OptimizeLogLike.R is this script allows for multiple variances (i.e K different dispersion parameters)
 
-CompLogLike_Ksigma <- function(X, C, Omega, sigma) {   #sigma is a K-vector. This script returns the log-likelihood
+CompLogLike_Ksigma <- function(X, C, Omega, sigma) {   #sigma is a K-vector. This script returns the log-likelihood (NOT the minus log-likelihood)
 	n <- nrow(X)
 	d <- ncol(X)
 	K <- ncol(Omega)
@@ -77,13 +77,12 @@ CompHessian_Ksigma <- function(X, C, Omega, sigma) {          #Compute the Hessi
 	H <- -H
 	
 	eigen.H <- eigen(H, symmetric = T)
+	pd = 1
+	ind.use <- which(eigen.H$values > 0)
 	if (eigen.H$values[d*K] < delta) {
-		Q <- eigen.H$vectors
-		eigs <- eigen.H$values
-		eigs[eigs < delta] <- delta
-		H <- Q %*% diag(eigs) %*% t(Q)
+		pd = 0
 	}
-	return(H)	
+	return(list(Hessian=H, pd=pd, lambda=eigen.H$values[ind.use], U=eigen.H$vectors[,ind.use]))	
 }
 
 UpdateSigma <- function(X, Omega, C, sigma) {				#Update all indices of sigma and compute gradient after update
@@ -119,7 +118,7 @@ quad.solve <- function(a,b,c) {
 }
 
 
-CompFI_Ksigma <- function(X, C, Omega, sigma) {   #Computes the (d+1)K x (d+1)K Fisher Information matrix
+CompFI_Ksigma <- function(X, Omega, sigma) {   #Computes the (d+1)K x (d+1)K Fisher Information matrix
 	n <- nrow(X)
 	d <- ncol(X)
 	K <- ncol(Omega)
@@ -168,7 +167,7 @@ CompFI_Ksigma <- function(X, C, Omega, sigma) {   #Computes the (d+1)K x (d+1)K 
 #Check boundary conditions
 #Return 1 if they are satisfied, 0 if not
 CheckBound <- function(X, Omega, dir) {    ##It's assumed Omega is a matrix and direction is a vector
-	tol <- 1e-3
+	tol <- 1e-10
 	n <- nrow(X)
 	K <- ncol(Omega)
 	d <- nrow(Omega)
@@ -178,7 +177,7 @@ CheckBound <- function(X, Omega, dir) {    ##It's assumed Omega is a matrix and 
 	mean.mat.vec <- as.vector(mean.mat)      #All of the entries of this vector should be between 0 and 1
 	mean.vec <- apply(mean.mat, 1, sum)      #All of the entries of this vector should be between 0 and 1
 	
-	if (sum( mean.mat.vec >= (1-tol) ) + sum(mean.mat.vec <= tol) + sum( mean.vec >= (1-tol) ) + sum(mean.vec <= tol)) {
+	if (sum( sum(mean.mat.vec <= tol) + sum( mean.vec >= (1-tol) ))) {
 		return(0)
 	} else {
 		return(1)
@@ -189,7 +188,7 @@ CheckBound <- function(X, Omega, dir) {    ##It's assumed Omega is a matrix and 
 #Compute the ML estiamte for Omega and sigma = (sigma_1, ..., sigma_K)
 MaxLike.NewtonLS_Ksigma <- function(X, C, Omega_start, sigma_start, tol) {
 	max.iter <- 1e5
-	rho <- 1/2           ##This shrinks the direction until it is within the boundary. Note that if B_k is pd, the direction will always be a search direction
+	rho <- 3/4           ##This shrinks the direction until it is within the boundary. Note that if B_k is pd, the direction will always be a search direction
 	n <- nrow(X)
 	d <- ncol(X)
 	K <- ncol(Omega_start)
@@ -198,21 +197,38 @@ MaxLike.NewtonLS_Ksigma <- function(X, C, Omega_start, sigma_start, tol) {
 	Omega.0 <- Omega_start
 	sigma.0 <- sigma_start
 	grad.0 <- 0
+	c.0 <- 0.01
+	sigma.grad.0 <- rep(0, K)	
 	
 	while (norm.grad > tol && count < max.iter) {
 		
-		##Update Omega##
+		##Get a Direction for Omega Omega##
 		if (length(grad.0) < 2) {
 			grad.0 <- CompGrad_Ksigma(X, C, Omega.0, sigma.0)
 		}
-		H.0 <- CompHessian_Ksigma(X, C, Omega.0, sigma.0)
-		dir.1 <- - solve(H.0, grad.0)
+		H.0.list <- CompHessian_Ksigma(X, C, Omega.0, sigma.0)
+		is.pd <- H.0.list$pd
+		if (is.pd) {
+			dir.1 <- - solve(H.0.list$Hessian, grad.0)
+		} else {
+			dir.1 <- - grad.0 / sum(grad.0 * grad.0)^0.5
+		}
 		count.check <- 0
 		
-		while(!CheckBound(X, Omega.0, dir.1) && count.check < 1000) {
+		while(!CheckBound(X, Omega.0, dir.1) && count.check < 200) {
 			dir.1 <- rho*dir.1
 			count.check <- count.check + 1
 		}
+		
+		##Ensure the direction gives sufficient increase of LL (decrease of -LL)##
+		#Note there is no need to include the gradient terms, since I am not updating sigma
+		LL.k <- CompLogLike_Ksigma(X, C, Omega.0, sigma.0)
+		count.line <- 0
+		while (-CompLogLike_Ksigma(X, C, Omega.0 + dir.1, sigma.0) > -LL.k + c.0 * sum(dir.1 * grad.0) && count.line < 100) {
+			dir.1 <- rho * dir.1
+			count.line <- count.line + 1
+		}
+		
 		Omega.1 <- Omega.0 + matrix(dir.1, nrow=d, ncol=K)	
 		
 		##Update sigma##
@@ -221,15 +237,91 @@ MaxLike.NewtonLS_Ksigma <- function(X, C, Omega_start, sigma_start, tol) {
 		
 		##Check size of the gradient##
 		grad.1 <- CompGrad_Ksigma(X, C, Omega.1, sigma.1)
-		norm.grad <- max(abs(up.sigma$grad), abs(grad.1))
+		grad.sigma.1 <- up.sigma$grad
+		norm.grad <- max(abs(grad.sigma.1), abs(grad.1))
 		
 		##Re-initialize##
 		Omega.0 <- Omega.1
 		sigma.0 <- sigma.1
 		grad.0 <- grad.1
+		grad.sigma.0 <- grad.sigma.1
 		
 		count <- count + 1
 	}
 	
-	return(list(Omega=Omega.0, sigma=sigma.0, infnorm.grad=norm.grad, I=CompFI_Ksigma(X,C,Omega.0,sigma.0), n.iter = count, Hessian=CompHessian_Ksigma(X, C, Omega.0, sigma.0)))	29	
+	return(list(Omega=Omega.0, sigma=sigma.0, infnorm.grad=norm.grad, I=CompFI_Ksigma(X,Omega.0,sigma.0), n.iter = count, Hessian=CompHessian_Ksigma(X, C, Omega.0, sigma.0), LL = CompLogLike_Ksigma(X, C, Omega.0, sigma.0)))
+}
+
+
+##This attempts to compute a Newton Step when the Hessian is NOT pd by looking at the directions with positive eigenvalues. This does NOT work
+MaxLike.NewtonLS_Ksigma.NS <- function(X, C, Omega_start, sigma_start, tol) {
+	max.iter <- 1e5
+	rho <- 3/4           ##This shrinks the direction until it is within the boundary. Note that if B_k is pd, the direction will always be a search direction
+	n <- nrow(X)
+	d <- ncol(X)
+	K <- ncol(Omega_start)
+	count <- 1
+	norm.grad <- 1 + tol
+	Omega.0 <- Omega_start
+	sigma.0 <- sigma_start
+	grad.0 <- 0
+	c.0 <- 0.01
+	sigma.grad.0 <- rep(0, K)	
+	
+	while (norm.grad > tol && count < max.iter) {
+		
+		##Get a Direction for Omega Omega##
+		if (length(grad.0) < 2) {
+			grad.0 <- CompGrad_Ksigma(X, C, Omega.0, sigma.0)
+		}
+		H.0.list <- CompHessian_Ksigma(X, C, Omega.0, sigma.0)
+		is.pd <- H.0.list$pd
+		if (is.pd) {
+			dir.1 <- - solve(H.0.list$Hessian, grad.0)
+		} else {
+			U.1 <- cbind(H.0.list$U)
+			lambda.1 <- H.0.list$lambda
+			if (length(lambda.1) > K) {
+				alpha.1 <- - U.1 %*% cbind(1/lambda.1 * as.vector( t(U.1) %*% grad.0 ))
+			} else {
+				dir.1 <- - grad.0 / sum(grad.0 * grad.0)^0.5
+			}
+		}
+		count.check <- 0
+		
+		while(!CheckBound(X, Omega.0, dir.1) && count.check < 200) {
+			dir.1 <- rho*dir.1
+			count.check <- count.check + 1
+		}
+		
+		##Ensure the direction gives sufficient increase of LL (decrease of -LL)##
+		#Note there is no need to include the gradient terms, since I am not updating sigma
+		LL.k <- CompLogLike_Ksigma(X, C, Omega.0, sigma.0)
+		count.line <- 0
+		while (-CompLogLike_Ksigma(X, C, Omega.0 + dir.1, sigma.0) > -LL.k + c.0 * sum(dir.1 * grad.0) && count.line < 100) {
+			dir.1 <- rho * dir.1
+			count.line <- count.line + 1
+		}
+		
+		Omega.1 <- Omega.0 + matrix(dir.1, nrow=d, ncol=K)	
+		
+		##Update sigma##
+		up.sigma <- UpdateSigma(X, Omega.1, C, sigma.0)
+		sigma.1 <- up.sigma$sigma
+		
+		##Check size of the gradient##
+		grad.1 <- CompGrad_Ksigma(X, C, Omega.1, sigma.1)
+		grad.sigma.1 <- up.sigma$grad
+		norm.grad <- max(abs(grad.sigma.1), abs(grad.1))
+		
+		##Re-initialize##
+		Omega.0 <- Omega.1
+		sigma.0 <- sigma.1
+		grad.0 <- grad.1
+		grad.sigma.0 <- grad.sigma.1
+		
+		count <- count + 1
+	}
+	
+	return(list(Omega=Omega.0, sigma=sigma.0, infnorm.grad=norm.grad, I=CompFI_Ksigma(X,Omega.0,sigma.0), n.iter = count, Hessian=CompHessian_Ksigma(X, C, Omega.0, sigma.0)$Hessian, LL = CompLogLike_Ksigma(X, C, Omega.0, sigma.0)))
 }
