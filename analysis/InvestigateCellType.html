@@ -74,8 +74,8 @@ img {
 </div>
 
 
-<p><strong>Last updated:</strong> 2016-03-07</p>
-<p><strong>Code version:</strong> e54e83f68a804e4905dc983b26dab2632aebe36f</p>
+<p><strong>Last updated:</strong> 2016-03-29</p>
+<p><strong>Code version:</strong> d4324956b628e6bcc243e5436aa01757a375c721</p>
 <pre class="r"><code>source(&quot;chunk-options.R&quot;)
 source(&quot;../R/OptimizeLogLike.R&quot;)
 source(&quot;../R/OptimizeLogLike_Ksigma.R&quot;)</code></pre>
@@ -630,13 +630,21 @@ hist(prop.effect, breaks=90, main=&quot;Propotion of Effect Explained by Cell Ty
 <p>2.) Whether or not our covariates determine cell type is very dependent on the data. In Michelle’s Hutterite data, we show that covariates are NOT contaminated by cell type and that error due to cell type is negligible (when <span class="math inline">\(L\)</span> and <span class="math inline">\(\Omega\)</span> are known).</p>
 <p>Based on this, I would argure a cell type training set is most appropriate to performa analysis. I think we lose too much information and make overly-conservative assumptions in an unsupervised approach.</p>
 </div>
-<div id="investigating-test-statistics" class="section level2">
-<h2>Investigating Test Statistics</h2>
-<p>In this next part I will investigate possible test statistics, given that we have cell type information on some of the individuals individuals, but not all. Suppose there are <span class="math inline">\(n_1\)</span> individuals who’s cell type is known and <span class="math inline">\(n_2\)</span> with unknown cell type. Recall that for <span class="math inline">\(C_2 = X_2^T \Omega + \Xi^T\)</span>, the model is <span class="math display">\[
+<div id="investigating-test-statistics-an-unbiased-ols-estimator" class="section level2">
+<h2>Investigating Test Statistics: An Unbiased OLS Estimator</h2>
+<p>In this next part I will investigate possible test statistics, given that we have cell type information on some of the individuals individuals, but not all. Suppose there are <span class="math inline">\(n_1\)</span> individuals who’s cell type is known and <span class="math inline">\(n_2\)</span> with unknown cell type. Recall that the first and second moment assumptions on the predictive distribution for <span class="math inline">\(C_2\)</span>, the unobserved cell types, are</p>
+<p>1.) <span class="math display">\[
+E\left( C_2 \mid C_1 \right) = X_2^T \hat{\Omega}
+\]</span> 2.) <span class="math display">\[
+\text{Var}\left( C_2^{(i)} \mid C_1 \right) = E_{\Omega} \text{Var}\left( C_2^{(i)} \mid C_1, \Omega \right) + \text{Var}_{\Omega}\left( E\left( C_2^{(i)} \mid C_1, \Omega \right) \right) = E_{\Omega}R_i\left( \Omega \right) + S_i
+\]</span> 3.) <span class="math display">\[
+\text{Cov}\left( C_2^{(i)}, C_2^{(j)} \mid C_1 \right) = E_{\Omega} \underbrace{\text{Cov}\left( C_2^{(i)}, C_2^{(j)} \mid C_1, \Omega \right)}_{\text{0 by assumption}} + \text{Cov}_{\Omega} \left( E\left( C_2^{(i)} \mid C_1, \Omega \right), E\left( C_2^{(j)} \mid C_1, \Omega \right) \right) = S_{i \times j}
+\]</span> where <span class="math inline">\(R_i\left( \Omega \right) = \text{Var}\left( C_2^{(i)} \mid C_1, \Omega \right)\)</span> is known (it should look like the multinomial covariance). <span class="math inline">\(S_i\)</span> and <span class="math inline">\(S_{i \times j}\)</span> relate to the uncertainty in the uncertainty in our estimate <span class="math inline">\(\hat{\Omega}\)</span> and will be described below. The model is then <span class="math display">\[
 Y_1 = B_{p \times d} X_1 + L_{p \times K}C_1^T + E_1
 \]</span> <span class="math display">\[
-Y_2 = BX_2 + L\Omega^T X_2  + L\Xi_{K \times n_2} + E_2
-\]</span> where <span class="math inline">\(X_i \in \mathbb{R}^{d \times n_i}\)</span>, <span class="math inline">\(C_1 \in \mathbb{R}^{n_1 \times K}\)</span>, <span class="math inline">\(\Omega \in \mathbb{R}^{d \times K}\)</span> and <span class="math inline">\(E_i \sim MN_{p \times n_i}\left(0, \Sigma_{p \times p}, I_{n_i}\right)\)</span>. Further, for <span class="math inline">\(l\)</span> the log-likelihood function of <span class="math inline">\(p\left( C_1 \mid \Omega \right)\)</span>, define <span class="math display">\[
+Y_2 = BX_2 + LC_2^T + E_2
+\]</span> where <span class="math inline">\(X_i \in \mathbb{R}^{d \times n_i}\)</span>, <span class="math inline">\(C_1 \in \mathbb{R}^{n_1 \times K}\)</span>, <span class="math inline">\(\Omega \in \mathbb{R}^{d \times K}\)</span> and <span class="math inline">\(E_i \sim MN_{p \times n_i}\left(0, \Sigma_{p \times p}, I_{n_i}\right)\)</span>.</p>
+<p>Next define <span class="math inline">\(l\left( \Omega \right) = \log p\left( C_1 \mid \Omega, X_1 \right)\)</span> to be the log-likelihood for <span class="math inline">\(\Omega\)</span>. This can be either a Dirichlet likelihood or a normal approximation to the Dirichlet (or some other likelihood). We then define <span class="math display">\[
 -\left(\nabla^2 l\left(\text{vec}_{\text{cols}}(\Omega)\right) \mid_{\hat{\Omega}_{\text{MLE}}}\right)^{-1} = \left[\begin{matrix}
 S_{11} &amp; \cdots &amp; S_{1K}\\
 \vdots &amp; \ddots &amp; \vdots\\
@@ -654,19 +662,16 @@ x_i^T S_{11} x_j &amp; \cdots &amp; x_i^T S_{1K} x_j\\
 \vdots &amp; \ddots &amp; \vdots\\
 x_i^T S_{K1} x_j &amp; \cdots &amp; x_i^T S_{KK} x_j
 \end{matrix}\right]
-\]</span> and <span class="math display">\[
-\Xi_{K \times n_2} = \left( \xi_1 \cdots \xi_{n_2} \right) \quad \xi_i \sim N_K\left( 0, R_i \right)
-\]</span> where <span class="math inline">\(R_i\)</span> is the natural variance about the mean cell type and depends on <span class="math inline">\(\Omega^T x_i\)</span>, the mean cell type proportions for individual <span class="math inline">\(i\)</span>.</p>
+\]</span></p>
 <p>In the estimation procedure, we want to CONDITION ON <span class="math inline">\(C_1\)</span>, since these cell type data will presumably be from individuals with methylation data (that we obviously want to utilize). The estimation procedure would then be:</p>
-<p>1.) Use <span class="math inline">\(C_1\)</span> to estimate <span class="math inline">\(\Omega\)</span> via maximum likelihood using the model multivariate normal model <span class="math display">\[
-C_1 = X_1^T \Omega + \Xi_1.
-\]</span> Call the maximum likelihood estimate <span class="math inline">\(\hat{\Omega}_{\text{MLE}}\)</span> (code for this procedure has been implemented and tested). Note that since we are conditioning on <span class="math inline">\(C_1\)</span>, we cannot use the Fisher information matrix as a measure of our uncertainty of <span class="math inline">\(\hat{\Omega}_{\text{MLE}}\)</span>. Instead, we would like to estimate the posterior distribution <span class="math inline">\(p\left(\Omega \mid C_1,X_1 \right) \propto p\left( C_1 \mid \Omega,X_1\right)p(\Omega \mid X_1)\)</span>. Since <span class="math inline">\(\Omega \mid X_1\)</span> is constrained to the interior of the simplex, our prior on <span class="math inline">\(\Omega \mid X_1\)</span> is uniform over the interior of the simplex and 0 outside of it. Therefore, <span class="math display">\[
+<p>1.) Use <span class="math inline">\(C_1\)</span> to estimate <span class="math inline">\(\Omega\)</span> via maximum likelihood using the log-likelihood function <span class="math inline">\(l\left( \Omega \right)\)</span>.</p>
+<p>Call the maximum likelihood estimate <span class="math inline">\(\hat{\Omega}_{\text{MLE}}\)</span> (code for this procedure has been implemented and tested for the multivariate normal case). Note that since we are conditioning on <span class="math inline">\(C_1\)</span>, we cannot use the Fisher information matrix as a measure of our uncertainty of <span class="math inline">\(\hat{\Omega}_{\text{MLE}}\)</span>. Instead, we would like to estimate the posterior distribution <span class="math inline">\(p\left(\Omega \mid C_1,X_1 \right) \propto p\left( C_1 \mid \Omega,X_1\right)p(\Omega \mid X_1)\)</span>. Since <span class="math inline">\(\Omega \mid X_1\)</span> is constrained to the interior of the simplex, our prior on <span class="math inline">\(\Omega \mid X_1\)</span> is uniform over the interior of the simplex and 0 outside of it. Therefore, <span class="math display">\[
 p\left(\Omega \mid C_1,X_1 \right) \propto p\left( C_1 \mid \Omega,X_1\right).
 \]</span> where we have that for <span class="math inline">\(l\left( \Omega \mid C_1, X_1\right) = \log p\left( C_1 \mid \Omega,X_1\right)\)</span>, <span class="math display">\[
 l\left( \Omega \mid C_1, X_1\right) = l\left(\hat{\Omega}_{\text{MLE}} \mid C_1, X_1 \right) + \frac{1}{2}\left( \Omega - \hat{\Omega}_{\text{MLE}}\right)^T \nabla^2_{\Omega} l\left(\hat{\Omega}_{\text{MLE}} \right)\left( \Omega - \hat{\Omega}_{\text{MLE}}\right) + o\left( \Vert \Omega - \hat{\Omega}_{\text{MLE}} \Vert^2\right).
 \]</span> Therefore, provided <span class="math inline">\(l\left( \Omega \mid C_1, X_1\right)\)</span> is concave, (or at least the likelihood of other modes goes down to 0 as <span class="math inline">\(n_1 \to \infty\)</span>), then <span class="math display">\[
 p\left(\Omega \mid C_1,X_1 \right) \approx N\left( \hat{\Omega}_{\text{MLE}}, -\left( \nabla^2_{\Omega} l\left(\hat{\Omega}_{\text{MLE}} \right) \right)^{-1} \right).
-\]</span> Note that if we restrict ourselves to an <span class="math inline">\(\epsilon\)</span> region AWAY from the boundary of the simplex, then I am confident we can show that for <span class="math inline">\(n_1\)</span> large enough the log-likelihood <span class="math inline">\(l\left( \Omega \mid C_1, X_1\right)\)</span> is concave in this region (with high probability). I then propose we use <span class="math display">\[
+\]</span> I then propose we use <span class="math display">\[
 \Omega \mid C_1,X_1 \sim N\left( \hat{\Omega}_{\text{MLE}}, -\left( \nabla^2_{\Omega} l\left(\hat{\Omega}_{\text{MLE}} \right) \right)^{-1} \right)
 \]</span> as the posterior distribution of <span class="math inline">\(\Omega \mid C_1, X_1\)</span> in order to estimate our uncertainty in the estimate <span class="math inline">\(\hat{\Omega}_{\text{MLE}}\)</span>. This is very important when computing the variance of our estimator <span class="math inline">\(\hat{B}\)</span> with small <span class="math inline">\(n_1\)</span>.</p>
 <p>2.) Let <span class="math inline">\(V_{X_1}\)</span> be an orthonormal basis for the kernel of <span class="math inline">\(X_1\)</span>, which has <span class="math inline">\(n_1 - d\)</span> dimensions. Let <span class="math display">\[
@@ -679,7 +684,7 @@ p\left(\Omega \mid C_1,X_1 \right) \approx N\left( \hat{\Omega}_{\text{MLE}}, -\
 <p>3.) Let <span class="math inline">\(V_{C_1^T}\)</span> be a basis for the kernel of <span class="math inline">\(C_1^T\)</span>, which has dimension <span class="math inline">\(n_2 - K\)</span>. Denote <span class="math display">\[
 Z_1 = Y_1 V_{C_1^T} \mid C_1, X_1, X_2 \sim MN_{p \times n_1 - K}\left(BX_1 V_{C_1^T}, \Sigma, I_{n_1 - K} \right)
 \]</span></p>
-<p>4.) Let <span class="math inline">\(Z_2 = Y_2 - \hat{L}\hat{\Omega}_{\text{MLE}} X_2\)</span> be the residuals after removing the effect of the predicted mean cell type. If we condition on <span class="math inline">\(C_1\)</span>, <span class="math inline">\(\Omega\)</span> is random. In this procedure, we assume that <span class="math inline">\(\Omega \mid C_1\)</span> and <span class="math inline">\(\hat{L} \mid C_1\)</span> are INDEPENDENT. We then have that <span class="math inline">\(Z_1\)</span> and <span class="math inline">\(Z_2\)</span> are unbiased estimators for <span class="math inline">\(BX_1 V_{C_1^T}\)</span> and <span class="math inline">\(BX_2\)</span>: <span class="math display">\[
+<p>4.) Let <span class="math inline">\(Z_2 = Y_2 - \hat{L} E\left( C_2 \mid C_1 \right)^T = Y_2 - \hat{L}\hat{\Omega}_{\text{MLE}}^T X_2\)</span> be the residuals after removing the effect of the predicted mean cell type. If we condition on <span class="math inline">\(C_1\)</span>, <span class="math inline">\(\Omega\)</span> is random. In this procedure, we assume that <span class="math inline">\(\Omega \mid C_1\)</span> and <span class="math inline">\(\hat{L} \mid C_1\)</span> are INDEPENDENT. We then have that <span class="math inline">\(Z_1\)</span> and <span class="math inline">\(Z_2\)</span> are unbiased estimators for <span class="math inline">\(BX_1 V_{C_1^T}\)</span> and <span class="math inline">\(BX_2\)</span>: <span class="math display">\[
 E\left( Z_1 \mid C_1, X_1, X_2 \right) = BX_1 V_{C_1^T}
 \]</span> <span class="math display">\[
 E\left(Z_2 \mid C_1, X_1, X_2 \right) = BX_2 + L\hat{\Omega}_{\text{MLE}}^T X_2 - L\hat{\Omega}_{\text{MLE}}^T X_2 = BX_2.
@@ -695,7 +700,7 @@ E\left(Z_2 \mid C_1, X_1, X_2 \right) = BX_2 + L\hat{\Omega}_{\text{MLE}}^T X_2 
 \]</span> <span class="math display">\[
 \cdots L E\left[ R_i\left( \Omega^T x_i \right) \mid C_1, X_1, X_2 \right]L^T + L S_i L^T = \Sigma_p \left[ 1 + x_i^T \hat{\Omega}_{\text{MLE}} \left( C_1^T P^{\perp}_{X_1^T} C_1 \right)^{-1}\hat{\Omega}_{\text{MLE}}^T x_i \right] + L\left( E\left[ R_i\left( \Omega^T x_i \right) \mid C_1, X_1, X_2 \right] + S_i \right)L^T
 \]</span> And, <span class="math display">\[
-\text{Cov}\left( \left( Z_2 \right)_i, \left( Z_2 \right)_j \mid C_1, X_1, X_2 \right) = \text{Cov}\left( \left( L - \hat{L} \right)\Omega^T x_i + L \xi_i + \left( E_2 \right)_i, \left( L - \hat{L} \right)\Omega^T x_j + L \xi_j + \left( E_2 \right)_j \mid C_1, X_1, X_2 \right)
+\text{Cov}\left( \left( Z_2 \right)_i, \left( Z_2 \right)_j \mid C_1, X_1, X_2 \right) = \text{Cov}\left( L\Omega^T x_i - \hat{L}\hat{\Omega}^T x_i  + L \xi_i + \left( E_2 \right)_i, L\Omega^T x_j - \hat{L}\hat{\Omega}^T x_j + L \xi_j + \left( E_2 \right)_j \mid C_1, X_1, X_2 \right)
 \]</span> <span class="math display">\[
  \underbrace{=}_{\text{Same procedure as above}} L S_{i \times j} L^T + \Sigma_p\left[ x_i^T \hat{\Omega}_{\text{MLE}} \left( C_1^T P^{\perp}_{X_1^T} C_1 \right)^{-1}\hat{\Omega}_{\text{MLE}}^T x_j \right]
 \]</span></p>
@@ -725,7 +730,147 @@ V_{C_1^T}^T X_1^T\\
 X_2^T
 \end{matrix} \right]\right)^{-1} \stackrel{n_1,n_2 \to \infty}{\longrightarrow} \left( \sigma_g^{-2} X_1 P^{\perp}_{C_1^T} X_1^T + \left( \sigma_g^2 + \ell_g^T R_i \ell_g \right)^{-1} X_2 X_2^T \right)^{-1}.
 \]</span> Note that if we find that the cell proportions are uncorrelated with methylation, then <span class="math inline">\(\ell_g\)</span> would be negligible in comparison to <span class="math inline">\(\sigma_g^2\)</span>, which would be the standard regression problem where <span class="math inline">\(B\)</span> was the only coefficient. I think I can also prove that the under regularity conditions, the asymptotic distrubution for <span class="math inline">\(\hat{\beta}_g\)</span> is normally distributed.</p>
-<p>Note that we can also simultaneously compute GLS estimates for the multiple sites coefficient vector <span class="math inline">\(\left[ \begin{matrix} \beta_{g_1}\\ \vdots\\ \beta_{g_m} \end{matrix} \right]\)</span> if we assume that <span class="math inline">\(\Sigma_{p \times p}\)</span> is diagonal. The analytic form is a bit messy, however.</p>
+<p>We can also simultaneously compute GLS estimates for the multiple sites coefficient vector <span class="math inline">\(\left[ \begin{matrix} \beta_{g_1}\\ \vdots\\ \beta_{g_m} \end{matrix} \right]\)</span> if we assume that <span class="math inline">\(\Sigma_{p \times p}\)</span> is diagonal. The analytic form is a bit messy, however.</p>
+<p>In the above calculations, there is no need to assume the predicted values for <span class="math inline">\(C_2\)</span> follow a normal distribution. In fact, we ONLY need first and second moment assumptions on the predictive distribution for the variance calculations to be true.</p>
+</div>
+<div id="investigating-test-statistics-a-biased-lower-variance-quasi-likelihood-approach" class="section level2">
+<h2>Investigating Test Statistics: A (biased, lower variance) Quasi-Likelihood Approach</h2>
+<p>The above method uses only the first <span class="math inline">\(n_1\)</span> observations to estimate <span class="math inline">\(L\)</span>. We can presumably get a lower variance estimate of <span class="math inline">\(B\)</span> if we had a lower variance estimate for <span class="math inline">\(L\)</span>. This motivates the quasi-likelihood approach.</p>
+<p>Again, we have the same model for methylation: <span class="math display">\[
+Y_1 = BX_1 + LC_1^T + E_1
+\]</span> <span class="math display">\[
+Y_2 = BX_2 + LC_2^T + E_2
+\]</span> We assume that the first and second moments of the predictive distribution for <span class="math inline">\(p\left( C_2 \mid C_1 \right)\)</span> are the same as above.</p>
+<p>Estimation will be performed site-by-site. Let the <span class="math inline">\(Y_{1_{g.}} = y_{1_g}\)</span>, <span class="math inline">\(Y_{2_{g.}} = y_{2_g}\)</span>, <span class="math inline">\(B_{g.} = \beta_g\)</span>, <span class="math inline">\(L_{g.} = \ell_g\)</span>, <span class="math inline">\(E_{i_{g.}} = \epsilon_{i_g}\)</span>, where <span class="math inline">\(E\epsilon_{i_g}= 0\)</span>, <span class="math inline">\(E\epsilon_{i_g} \epsilon_{i_g}^T = \sigma_g^2 I_{n_i}\)</span>. Define <span class="math display">\[
+\mu_{1_g} = \mu_1\left( \beta_g, \ell_g \right) = E\left( y_{1_g} \mid X_1, X_2, C_1 \right) = X_1^T \beta_g + C_1 \ell_g
+\]</span> and <span class="math display">\[
+\mu_{2_g} = \mu_2\left( \beta_g, \ell_g \right) = E\left( y_{2_g} \mid X_1, X_2, C_1 \right) = X_2^T \beta_g + X_2^T \hat{\Omega} \ell_g.
+\]</span> Using a method identical to the one in the previous section, we can calculate the variance of <span class="math inline">\(y_{1_g}\)</span> and <span class="math inline">\(y_{2_g}\)</span>: <span class="math display">\[
+\text{Var}\left( y_{1_g} \mid X_1, X_2, C_1 \right) = \sigma_g^2 I_{n_1}
+\]</span> <span class="math display">\[
+G(\ell_g) = \text{Var}\left( y_{2_g} \mid X_1, X_2, C_1 \right) = \left( \begin{matrix}
+\ell_g^T V_1 \ell_g &amp; \cdots &amp; \ell_g^T S_{1 \times n_2} \ell_g\\
+\vdots &amp; \ddots &amp; \vdots\\
+\ell_g^T S_{n_2 \times 1} \ell_g &amp; \cdots &amp; \ell_g^T V_{n_2} \ell_g
+\end{matrix} \right) + \sigma_g^2 I_{n_2}, \quad V_i = E_{\Omega} R_i + S_i
+\]</span> <span class="math display">\[
+\text{Cov}\left( y_{1_g}, y_{2_g} \right) = 0.
+\]</span></p>
+<p>1.) Estimate <span class="math inline">\(\sigma_g^2\)</span> using the <span class="math inline">\(n_1\)</span> individuals in the training data. The first possible estimate would be the OLS estimate: <span class="math display">\[
+\hat{\sigma}_{g,OLS}^2 = \frac{1}{n-t} y_{1_g}^T \left( I_{n_1} - H_1 \right) y_{1_g}
+\]</span> where <span class="math inline">\(H_1\)</span> is the orthogonal projection matrix onto the columns of <span class="math inline">\(\left[ \begin{matrix} X_1^T &amp; C_1 \end{matrix} \right]\)</span> and <span class="math inline">\(t = d+K =\)</span> number of covariates. It’s clear that <span class="math inline">\(\hat{\sigma}_{g,OLS}^2 \stackrel{P}{\to} \sigma_g^2\)</span> under very minor assumptions on <span class="math inline">\(X_1\)</span> (i.e. it has full rank <span class="math inline">\(\forall\)</span> <span class="math inline">\(n_1 &gt; d\)</span>).</p>
+<p>If <span class="math inline">\(n_1\)</span> is small, we can take a Bayesian approach and pool our data to estimate each <span class="math inline">\(\sigma_g^2\)</span> jointly. Let <span class="math inline">\(Q_g \in \mathbb{R}^{n_1 \times \left( n_1-t \right)}\)</span> be an orthonormal basis for <span class="math inline">\(\text{ker}\left( \left[ \begin{matrix} X_1^T &amp; C_1 \end{matrix} \right]^T \right)\)</span>. If we then assume that <span class="math inline">\(\epsilon_{1_g} \mid \sigma_g^2 \sim N\left( 0, \sigma_g^2 I_{n_1} \right)\)</span>, we can use the following hierarchical model to get a lower variance estimate of <span class="math inline">\(\sigma_g^2\)</span>: <span class="math display">\[
+Q_g^T y_{1_g} = \tilde{y}_{1_g} \mid \sigma_g^2 \sim N\left( 0, \sigma_g^2 I_{n_1 - t} \right)
+\]</span> <span class="math display">\[
+\sigma_g^2 \stackrel{\text{iid}}{\sim} IG\left( \alpha, \gamma \right)
+\]</span> and set <span class="math display">\[
+\hat{\sigma}_{g,B}^2 = E\left[ \sigma_g^2 \mid \tilde{y}_{1_1}, \ldots, \tilde{y}_{1_p} \right], \quad \sigma_g^2 \mid \tilde{y}_g \sim IG\left( \hat{\alpha} + \frac{n_1 - t}{2}, \hat{\gamma} + \frac{\tilde{y}_g^T \tilde{y}_g}{2} \right)
+\]</span> where <span class="math inline">\(\hat{\alpha}\)</span> and <span class="math inline">\(\hat{\gamma}\)</span> are estimated by ML. To prove <span class="math inline">\(\hat{\sigma}_{g,B}^2 \stackrel{P}{\to} \sigma_g^2\)</span>, we need only show that we can control the size of <span class="math inline">\(\hat{\alpha}\)</span> and <span class="math inline">\(\hat{\gamma}\)</span>, that is we need to prove <span class="math display">\[
+\limsup \hat{\alpha}, \text{ } \limsup \hat{\gamma} = o_P\left( n_1 \right)
+\]</span></p>
+<p>2.) Estimate <span class="math inline">\(\ell_g\)</span> and <span class="math inline">\(\beta_g\)</span> using quasi-likelihood (see McCullagh, Nelder). Suppose first that <span class="math inline">\(\sigma_g^2\)</span> was known. Let <span class="math inline">\(\tilde{\beta}_g = \left( \begin{matrix} \beta_g\\ \ell_g \end{matrix} \right)\)</span>. The score equations would be <span class="math display">\[
+U_1 = \frac{1}{\sigma_g^2}\left[ \begin{matrix}
+X_1\\
+C_1^T
+\end{matrix} \right] \left( y_{1_g} - \mu_{1_g} \right)
+\]</span> <span class="math display">\[
+U_2 = \left[ \begin{matrix}
+X_2\\
+\hat{\Omega}^T X_2
+\end{matrix} \right]G\left( \ell_g \right)^{-1}\left( y_{2_g} - \mu_{2_g} \right)
+\]</span> <span class="math display">\[
+U = U_1 + U_2
+\]</span> with <span class="math display">\[
+T = -E\frac{dU}{d\tilde{\beta}} = \text{Var} U = \left[ \begin{matrix}
+\frac{1}{\sigma_g^2}X_1 X_1^T + X_2 G\left( \ell \right)^{-1} X_2^T &amp; \frac{1}{\sigma_g^2}X_1 C_1 + X_2 G\left( \ell \right)^{-1} X_2^T \hat{\Omega}\\
+\frac{1}{\sigma_g^2}C_1^T X_1^T + \hat{\Omega}^T X_2 G\left( \ell \right)^{-1} X_2^T &amp; \frac{1}{\sigma_g^2} C_1^T C_1 + \hat{\Omega}^T X_2 G\left( \ell \right)^{-1} X_2^T \hat{\Omega}
+\end{matrix} \right].
+\]</span> and Newton updates <span class="math display">\[
+\hat{\tilde{\beta}}_{k+1} = \hat{\tilde{\beta}}_k + T_k^{-1} U_k.
+\]</span> Using standard asymptotic quasi-likelihood theory (see McCullagh, Nelder and QuasiLikelihood_Intro.pdf), <span class="math display">\[
+T^{1/2} \left( \left( \begin{matrix}
+\hat{\beta}_g\\
+\hat{\ell}_g
+\end{matrix} \right) - \left( \begin{matrix}
+\beta_g\\
+\ell_g
+\end{matrix} \right) \right) \stackrel{\mathcal{D}}{\to} N\left( 0, I_t \right).
+\]</span></p>
+<p>If <span class="math inline">\(\sigma_g^2\)</span> is NOT known, then we can use one of our estimators as a plugin estimator for <span class="math inline">\(\sigma_g^2\)</span>. To sketch a proof of why this is appropriate, let <span class="math inline">\(\hat{\sigma}_g^2 = \hat{\sigma}_g^2 \left( \tilde{y}_{1_g} \right)\)</span> be an estimator of <span class="math inline">\(\sigma_g^2\)</span> s.t. <span class="math inline">\(\hat{\sigma}_g^2 \stackrel{P}{\to} \sigma_g^2\)</span> and define <span class="math display">\[
+\hat{G} = \hat{G}\left( \ell_g \right) = \left( \begin{matrix}
+\ell_g^T V_1 \ell_g &amp; \cdots &amp; \ell_g^T S_{1 \times n_2} \ell_g\\
+\vdots &amp; \ddots &amp; \vdots\\
+\ell_g^T S_{n_2 \times 1} \ell_g &amp; \cdots &amp; \ell_g^T V_{n_2} \ell_g
+\end{matrix} \right) + \hat{\sigma}_g^2 I_{n_2}
+\]</span> <span class="math display">\[
+\hat{U}\left( \tilde{\beta} \right) = \left[ \begin{matrix}
+X_1 &amp; X_2\\
+C_1^T &amp; \hat{\Omega}^T X_2
+\end{matrix} \right]\left( \begin{matrix}
+\frac{y_{1_g} - \mu_{1_g}}{\hat{\sigma}_g^2}\\
+\hat{G}^{-1} \left( y_{2_g} - \mu_{2_g} \right)
+\end{matrix} \right).
+\]</span> and Newton updates <span class="math display">\[
+\hat{\hat{\tilde{\beta}}}_{k+1} = \hat{\hat{\tilde{\beta}}}_k + \hat{T}_k^{-1} \hat{U}_k \quad (*).
+\]</span> If we assume that <span class="math inline">\(y_{1_g}\)</span> and <span class="math inline">\(y_{2_g}\)</span> are INDEPENDENT, then <span class="math inline">\(\hat{\sigma}_g^2 \perp y_{2_g}\)</span>. Further, if <span class="math inline">\(y_{1_g} \mid X_1, C_1 \sim N\left( \mu_{1_g}, \sigma_g^2 I_{n_1} \right)\)</span>, then <span class="math inline">\(\hat{\sigma}_g^2 \perp \left( \begin{matrix} X_1\\ C_1^T \end{matrix} \right) y_{1_g}\)</span>. We therefore have</p>
+<p>a.) <span class="math display">\[
+E\left( \hat{U} \mid \hat{\sigma}_g^2 \right) = 0 \Rightarrow E \hat{U} = EE\left( \hat{U} \mid \hat{\sigma}_g^2 \right) = 0.
+\]</span> b.) <span class="math display">\[
+\text{Var}\hat{U} = E_{\hat{\sigma}_g^2} \text{Var}\left( \hat{U} \mid \hat{\sigma}_g^2 \right) + \text{Var}_{\hat{\sigma}_g^2}\underbrace{E\left( \hat{U} \mid \hat{\sigma}_g^2 \right)}_{=0} = E_{\hat{\sigma}_g^2} \left( \left[ \begin{matrix}
+X_1 &amp; X_2\\
+C_1^T &amp; \hat{\Omega}^T X_2
+\end{matrix} \right] \left[ \begin{matrix}
+\frac{\sigma_g^2}{\hat{\sigma}_g^2 \hat{\sigma_g}^2} I_{n_1} &amp; 0\\
+0 &amp; \hat{G}^{-1} G \hat{G}^{-1}
+\end{matrix} \right] \left[ \begin{matrix}
+X_1^T &amp; C_1\\
+X_2^T &amp; X_2^T\hat{\Omega}
+\end{matrix} \right] \right)
+\]</span> c.) <span class="math display">\[
+\hat{T} = -E \left( \frac{d\hat{U}}{d\tilde{\beta}} \mid \hat{\sigma}_g^2 \right) = \left[ \begin{matrix}
+X_1 &amp; X_2\\
+C_1^T &amp; \hat{\Omega}^T X_2
+\end{matrix} \right] \left[ \begin{matrix}
+\frac{1}{\hat{\sigma}_g^2} I_{n_1} &amp; 0\\
+0 &amp; \hat{G}^{-1}
+\end{matrix} \right] \left[ \begin{matrix}
+X_1^T &amp; C_1\\
+X_2^T &amp; X_2^T\hat{\Omega}
+\end{matrix} \right]= \left[ \begin{matrix}
+\frac{1}{\hat{\sigma}_g^2}X_1 X_1^T + X_2 \hat{G}^{-1} X_2^T &amp; \frac{1}{\hat{\sigma}_g^2}X_1 C_1 + X_2 \hat{G}^{-1} X_2^T \hat{\Omega}\\
+\frac{1}{\hat{\sigma}_g^2}C_1^T X_1^T + \hat{\Omega}^T X_2 \hat{G}^{-1} X_2^T &amp; \frac{1}{\hat{\sigma}_g^2} C_1^T C_1 + \hat{\Omega}^T X_2 \hat{G}^{-1} X_2^T \hat{\Omega}
+\end{matrix} \right]
+\]</span></p>
+<p>We also have the identity <span class="math display">\[
+\hat{G}^{-1} \underbrace{=}_{\rho_{n_2}\left( G \right) \geq \sigma_g^2} G^{-1}\left( I_{n_2} - \left( \hat{\sigma}_g^2 - \sigma_g^2 \right)G^{-1} + \left( \hat{\sigma}_g^2 - \sigma_g^2 \right)^2 G^{-2} + o_P\left( \left( \frac{\hat{\sigma}_g^2 - \sigma_g^2}{\sigma_g^2} \right)^2 \right) \right)
+\]</span> <span class="math display">\[
+\Rightarrow X_2\hat{G}^{-1} X_2^T \stackrel{P}{\sim} X_2 G^{-1} X_2^T \Rightarrow \hat{T}T^{-1} \stackrel{P}{\to} I_t.
+\]</span> Further, <span class="math display">\[
+\text{Var}\left( \hat{T}^{-1}\hat{U} \right) = E_{\hat{\sigma}_g^2}\left( \hat{T}^{-1} \left[ \begin{matrix}
+X_1 &amp; X_2\\
+C_1^T &amp; \hat{\Omega}^T X_2
+\end{matrix} \right] \left[ \begin{matrix}
+\frac{\sigma_g^2}{\hat{\sigma}_g^2 \hat{\sigma_g}^2} I_{n_1} &amp; 0\\
+0 &amp; \hat{G}^{-1} G \hat{G}^{-1}
+\end{matrix} \right] \left[ \begin{matrix}
+X_1^T &amp; C_1\\
+X_2^T &amp; X_2^T\hat{\Omega}
+\end{matrix} \right] \hat{T}^{-1}  \right) \underbrace{\to}_{\text{technical, but doable argument needed}} 0
+\]</span> meaning the estimator with updates given by (*) is consistent. Lastly, we wish to show that <span class="math inline">\(\hat{\hat{\tilde{\beta}}}_g - \hat{\tilde{\beta}}_g = o_P\left( \norm{T^{-1/2}} \right)\)</span> so that <span class="math inline">\(T^{1/2}\left( \hat{\hat{\tilde{\beta}}}_g - \hat{\tilde{\beta}}_g \right) = o_P\left( 1 \right)\)</span>. To prove this, we note that <span class="math display">\[
+\hat{T}^{-1}\hat{U} = \left(\frac{1}{n_1 + n_2}\hat{T}\right)^{-1} \frac{1}{n_1 + n_2} \hat{U} = \hat{\bar{T}}^{-1} \hat{\bar{U}} = \hat{\bar{T}}^{-1} \left( \bar{U} + \hat{\bar{R}} \right)
+\]</span> where <span class="math display">\[
+\hat{\bar{R}} = \bar{U} - \hat{\bar{U}} \stackrel{P}{\to} 0.
+\]</span> Therefore if we start at <span class="math inline">\(\tilde{\beta}_g\)</span> and for <span class="math inline">\(n_1, n_2\)</span> large enough, <span class="math display">\[
+\hat{\hat{\tilde{\beta}}}_g - \hat{\tilde{\beta}}_g \approx \left(\hat{\bar{T}}^{-1} - \bar{T}^{-1} \right)\bar{U} + \hat{\bar{T}}^{-1}\hat{\bar{R}}
+\]</span> <span class="math display">\[
+\Rightarrow T^{1/2} \left( \hat{\hat{\tilde{\beta}}}_g - \hat{\tilde{\beta}}_g \right) = o_P\left( 1 \right) 
+\]</span> Therefore, <span class="math display">\[
+\hat{T}^{1/2}\left( \hat{\hat{\tilde{\beta}}}_g - \tilde{\beta}_g \right) \stackrel{\mathcal{D}}{\to} N\left( 0,I_t \right).
+\]</span></p>
+</div>
+<div id="simulate-data" class="section level2">
+<h2>Simulate Data</h2>
+<p>Fix <span class="math inline">\(\Omega\)</span>, <span class="math inline">\(X_1\)</span>, <span class="math inline">\(X_2\)</span>, <span class="math inline">\(C_1\)</span>, <span class="math inline">\(B\)</span>, <span class="math inline">\(L\)</span>, <span class="math inline">\(\Sigma\)</span></p>
 </div>
 <div id="session-information" class="section level2">
 <h2>Session information</h2>
