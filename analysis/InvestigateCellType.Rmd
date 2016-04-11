@@ -12,6 +12,7 @@ date: 2016-02-05
 source("chunk-options.R")
 source("../R/OptimizeLogLike.R")
 source("../R/OptimizeLogLike_Ksigma.R")
+source("../R/EstimateBeta.R")
 ```
 
 The purpose of this file is to investigate how cell type is related to the covariates. That is, do we have any hope in predicting cell type given an individuals covariate information. In order to apply our supervised method, we need the variance in cell type among unrelated individuals to be small, given the covariate information.
@@ -193,9 +194,7 @@ Load Michele's data
 #Load SWAN-normalized data
 #Variables are Mset.swan.norm and rgset
 load(file="/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/MyWork/SavedObjects/Rfile.RData")
-meth.norm <- getMeth(Mset.swan.norm)
-unmeth.norm <- getUnmeth(Mset.swan.norm)
-beta.values <- meth.norm/(meth.norm+unmeth.norm+100)  #These are ordered by row in data.cov
+beta.values <- getBeta(Mset.swan.norm)
 ```
 
 Identify columns of the data that correspond to the data that I have in data.LPS (i.e. cell type data) and perform a regression
@@ -598,7 +597,7 @@ and set
 \]
 where $\hat{\alpha}$ and $\hat{\gamma}$ are estimated by ML. To prove $\hat{\sigma}_{g,B}^2 \stackrel{P}{\to} \sigma_g^2$, we need only show that we can control the size of $\hat{\alpha}$ and $\hat{\gamma}$, that is we need to prove
 \[
-\limsup \hat{\alpha}, \text{ } \limsup \hat{\gamma} = o_P\left( n_1 \right)
+\frac{\hat{\alpha}}{n_1}, \frac{\hat{\gamma}}{n_1} \stackrel{P}{\to} 0
 \]
 
 2.) Estimate $\ell_g$ and $\beta_g$ using quasi-likelihood (see McCullagh, Nelder). Suppose first that $\sigma_g^2$ was known. Let $\tilde{\beta}_g = \left( \begin{matrix}
@@ -746,7 +745,152 @@ Therefore,
 
 ## Simulate Data
 
-Fix $\Omega$, $X_1$, $X_2$, $C_1$, $B$, $L$, $\Sigma$
+Fix $\Omega$, $X_1$, $X_2$, $C_1$, $B$, $L$, $\Sigma$. To make things simple I assume there is only a single covariate of interest (a binary 1 or 0) and 4 cell types.
+
+```{r Initialize}
+n.1 <- 600     #Number of individuals with known cell type
+n.2 <- 4000    #Number of individuals with unmeasured cell type
+p <- 100      #Number of methylation sites
+var.g <- 0.75^2    #Diagonal elements of Sigma. Sigma is assumed to be diagonal
+var.cell <- 0.15^2    #Precision of cell measurement
+
+X.1 <- rbind(rep(1,n.1), c(rep(1,n.1/2), rep(0,n.1/2)))   #A d x n.1 matrix
+orthog.X.1 <- diag(n.1) - t(X.1) %*% solve( X.1 %*% t(X.1), X.1 )
+X.2 <- rbind(rep(1,n.2), c(rep(1,n.2/2), rep(0,n.2/2)))   #A d x n.2 matrix
+d <- nrow(X.1)
+
+###Simulate cell type proportions###
+
+Omega.sim = Omega[1:2,1:3]; Omega.sim[2,1] = 0.09
+XO.1 <- t(X.1) %*% Omega.sim
+XO.2 <- t(X.2) %*% Omega.sim
+K <- ncol(Omega.sim)
+C.1 <-  array(NA, dim=c(n.1, K))    #A n.1 x K matrix of individual 1's cell types (we condition on this)
+for (i in 1:n.1) {
+  alpha.i <- c(1/var.cell * XO.1[i,], 1/var.cell * (1 - sum(XO.1[i,])))
+  C.1[i,] <- rdirichlet(1, alpha.i)[1:K]
+}
+U.C1 <- svd(C.1)$u
+tmp.mat <- cbind(U.C1, diag(n.1))
+tmp.Q <- qr.Q(qr(tmp.mat))
+V.C.1t <- tmp.Q[, (K+1):n.1]    #C.1' V.C.1t = 0, V.C.1t is n.1 x n.1-K and orthonormal
+
+Cov.1 <- cbind(t(X.1), C.1)
+H.1 <- Cov.1 %*% solve( t(Cov.1) %*% Cov.1, t(Cov.1) )
+perp.1 <- diag(n.1) - H.1
+
+###Simulate L and B###
+
+var.l <- 1/C.1[n.1,]^2      #L_gi ~ N(0, var.l(i))
+var.beta <- rep(1, d)       #B_gi ~ N(0, var.beta(i))
+L <- array(NA, dim=c(p,K))
+B <- array(NA, dim=c(p,d))
+prior.B <- 0.5     #B.asthma ~ prior.B*delta_0 + (1-prior.B)*N(0,var.beta[j])
+for (k in 1:K) {
+  L[,k] <- sqrt(var.l[k]) * rnorm(p)
+}
+B[,1] <- sqrt(var.beta[1]) * rnorm(p)
+for (j in 2:d) {
+  B[,j] <- rbinom(p, 1, 1 - prior.B) * sqrt(var.beta[j]) * rnorm(p)
+}
+```
+
+## Estimate $Omega$
+For now I ONLY use the normal approximation estimator $\hat{\Omega}$. This will UNDERESTIMATE the cell type variance, so I may move use a different estimator, like a quasi-likelihood estimate (note that this is convex) or a dirichlet regression, which is definitely non-convex.
+
+```{r EstimateOmega}
+ML.norm <- MaxLike.NewtonLS(t(X.1), C.1, Omega.sim, var.cell, 1e-8, vfixed=F)
+Omega.norm <- ML.norm$Omega   #A d x K matrix
+sigma.cell.norm <- sqrt(ML.norm$v)  #I am UNDERESTIMATING the variance here if C is in fact Dirichlet. I may need to write my own solver for dirichlet Likelihood...
+var.Omega <- solve(ML.norm$I)[1:(d*K),1:(d*K)]   #Covariance of Omega.hat (posterior variance of the mean). It is var((w.1,...,w.K))
+var.Omega.full <- solve(ML.norm$I)
+XO.norm.2 <- t(X.2) %*% Omega.norm    #A n.2 x K matrix of predicted mean cell types for the second set of individuals
+Cov.predict <- rbind( cbind( t(X.1), C.1 ), cbind( t(X.2), XO.norm.2 ) )
+Cov.predict.2 <- cbind( t(X.2), XO.norm.2 )
+perp.2 <- diag(n.2) - Cov.predict.2 %*% solve(t(Cov.predict.2) %*% Cov.predict.2, t(Cov.predict.2))
+```
+
+Create variance matrix $V \in \mathbb{R}^{Kn_2 \times Kn_2}$ where $G = I_{n_2} \otimes \ell_g^T V I_{n_2} \otimes \ell_g + \sigma^2 I_{n_2}$.
+
+```{r CreateV}
+V <- array(NA, dim=c(n.2*K, n.2*K))
+for (i in 1:n.2) {
+  x.i <- cbind(X.2[,i])
+  kron.xi <- kronecker(diag(K), t(x.i))
+  p.i <- t(Omega.norm) %*% x.i
+  S.i <- kron.xi %*% var.Omega %*% t(kron.xi)
+  
+  tmp.kron.xi <- kronecker(diag(K), t(x.i))
+  tmp.kron.xi <- cbind(tmp.kron.xi, rep(0,K))
+  tmp.kron.xi <- rbind(tmp.kron.xi, c( rep(0,d*K), 1 ))
+  tmp.S.i <- tmp.kron.xi %*% var.Omega.full %*% t(tmp.kron.xi)
+  S.i.tilde <- tmp.S.i[1:K, 1:K]
+  a.i <- cbind(tmp.S.i[K+1,1:K])
+  V.i <- sigma.cell.norm^2 * ( diag(as.vector(p.i)) - S.i.tilde - p.i %*% t(p.i) ) + diag(as.vector(a.i)) - (p.i %*% t(a.i) + a.i %*% t(p.i))  #ith block is V.i + S.i
+  V[((i-1)*K+1):(i*K),((i-1)*K+1):(i*K)] <- V.i + S.i
+  
+  if (i == n.2) {
+    next
+  }
+  
+  for (j in (i+1):n.2) {
+    x.j <- cbind(X.2[,j])
+    kron.xj <- kronecker(diag(K), t(x.j))
+    S.ij <- kron.xi %*% var.Omega %*% t(kron.xj)
+    V[((i-1)*K+1):(i*K), ((j-1)*K+1):(j*K)] = S.ij
+    V[((j-1)*K+1):(j*K), ((i-1)*K+1):(i*K)] = t(S.ij)
+  }
+}
+```
+
+## Simulate Data
+Simulate and analyze data with the two estimators above
+
+```{r SimulateData}
+n.iter <- 1    #Number of data sets to simulate
+for (i in 1:n.iter) {
+  ##Simulate Y.1, Y.2 conditional on C.1, X.1, X.2
+  Y.1 <- B %*% X.1 + L %*% t(C.1) + sqrt(var.g) * matrix(rnorm(n.1*p), nrow=p, ncol=n.1)
+  
+  C.2 <- array(NA, dim=c(n.2, K))   #A n.2 x K matrix of cell type proportions
+  for (j in 1:n.2) {
+    alpha.j <- 1/var.cell * c(XO.2[j,], 1-sum(XO.2[j,]))
+    C.2[j,] <- rdirichlet(1, alpha.j)[1:K]
+  }
+  Y.2 <- B %*% X.2 + L %*% t(C.2) + sqrt(var.g) * matrix(rnorm(n.2*p), nrow=p, ncol=n.2)
+  
+  #Pooling estimator for the variance#
+  s <- Compute.s(cbind(t(X.1), C.1), Y.1)
+  mu.var <- mean(s/(n.1-K-d))
+  v.var <- sd(s/(n.1-K-d))^2
+  alpha.0 <- mu.var^2/v.var + 2
+  beta.0 <- mu.var*(alpha.0 - 1)
+  ML.pooled <- ML.Gamma(c(alpha.0,beta.0), s, n.1-d-K, 1e-8)
+  alpha <- ML.pooled$alpha
+  gamma <- ML.pooled$gamma
+  
+  
+  ##Estimate B using both of the above methods##
+  for (g in 1:p) {
+    y.1.g <- Y.1[g,]
+    y.2.g <- Y.2[g,]
+    var.OLS.g <- 1/(n.1 - K - d) * sum( y.1.g*as.vector(perp.1 %*% y.1.g) )   #OLS estimate for sigma_g^2
+    var.pooled.g <- (gamma + s[g]/2)/(alpha + n.1/2 - 1)      #Pooled estimate based on an IG prior with parameters estimated using empirical Bayes
+    
+    #Method 1#
+    l.g.hat <- solve( t(C.1) %*% orthog.X.1 %*% C.1, t(C.1) ) %*% orthog.X.1 %*% y.1.g
+    beta.list <- Estimator.1(var.hat.g, C.1, V.C.1t, orthog.X.1, X.2, Omega.norm, V, l.g.hat, y.1.g, y.2.g)
+    
+    #Method 2#
+    theta.0.g <- solve(t(Cov.predict) %*% Cov.predict, t(Cov.predict)) %*% c(y.1.g, y.2.g)
+    Est.2.g <- Estimator.2(var.pooled.g, C.1, X.1, X.2, Omega.norm, V, y.1.g, y.2.g, theta.0.g, 1e-6)
+    beta.2.g <- Est.2.g$beta
+    l.2.g <- Est.2.g$l
+    Var.2 <- Est.2.g$var.theta
+  }
+  
+}
+```
 
 ## Session information
 

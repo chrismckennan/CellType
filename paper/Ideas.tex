@@ -43,7 +43,7 @@ Y_i = B_{p \times d} X_i + L_{p \times K} C_i + E_i, \text{ } E_i \sim MN_{P \ti
 \]
 In our set up, we observed $X_1, X_2$ and $C_1$ but NOT $C_2$. For now, we assume that the columns of $C_i$ follow a dirichlet distribution with
 \[
-C_i \mid X_i, \Omega \sim \underbrace{\left( \text{Dir}\left( \alpha\Omega x_{1_1} \right), \ldots, \text{Dir}\left( \alpha\Omega x_{1_{n_i}} \right) \right)}_{\text{$n_i$ independent Dirichlet distributions}}
+C_i \mid X_i, \Omega \sim \underbrace{\left( \text{Dir}\left( \alpha\Omega x_{1_1} \right)^T, \ldots, \text{Dir}\left( \alpha\Omega x_{1_{n_i}} \right)^T \right)}_{\text{$n_i$ independent Dirichlet distributions}}
 \]
 where $\Omega \in \mathbb{R}^{K \times d}$ and $\alpha > 0$ is a concentration parameter. Note that
 \[
@@ -57,7 +57,7 @@ and
 E\left( Y_1 \mid X_1, X_2, C_1 \right) = BX_1 + LC_1
 \]
 \[
-E\left(  Y_2 \mid X_1, X_2, C_1 \right) = BX_2 + L\underbrace{E\left( C_2 \mid X_1, X_2, C_1 \right)}_{E\left( C_2 \mid X_2, \Omega \right) = \Omega X_2} X_2
+E\left(  Y_2 \mid X_1, X_2, C_1 \right) = BX_2 + LE\left( \Omega \mid X_1, X_2, C_1 \right) X_2
 \]
 
 \subsection{Estimating $\Omega$}
@@ -71,7 +71,7 @@ p\left( h \mid C_1 \right) \approx N\left( \hat{h}, \mathcal{I}\left( \hat{h} \r
 \]
 This is exactly the Bayesian central limit theorem.
 
-For our asymptotic results, we only need the asymptotic first and second moments of $p\left( h \mid C_1 \right)$ (and possibly the assumption that higher moments exist, which is why I assume the prior for $h$ has compact support), along with $n_1 = O\left( n_2 \right)$. The intuition for this is that the variance matrix for the second set of individuals will have $n_2^2$ entries, where the off-diagonal elements all are on the order $\frac{1}{n_1}$ (from the variance of $\Omega, \alpha \mid C_1$). In order to ensure that the maximum eigenvalue of this matrix doesn't explode, we require $n_1 = O\left( n_2 \right)$. When this is the case, I am pretty sure I can prove consistency of the the quasi-likelihood estimator.
+For our asymptotic results, we only need the asymptotic first and second moments of $p\left( h \mid C_1 \right)$ (and possibly the assumption that higher moments exist, which is why I assume the prior for $h$ has compact support), along with $n_1 = O\left( n_2 \right)$. The intuition for this is that the variance matrix for the second set of individuals will have $n_2^2$ entries, where the off-diagonal elements all are on the order $\frac{1}{n_1}$ (from the variance of $\Omega, \alpha \mid C_1$). In order to ensure that the maximum eigenvalue of this matrix doesn't explode as $n_2 \to \infty$, we require $n_1 = O\left( n_2 \right)$. When this is the case, I am pretty sure I can prove consistency of the the quasi-likelihood estimator.
 
 \subsection{Quasi-Likelihood Estimator}
 Since the Normal + Dirichlet is a difficult likelihood to work with, I use a quasi-likelihood estimator. For each CpG site $g = 1, \ldots, p$, let $y_{i_g}$ be the $g^{\text{th}}$ row of $Y_1$, $\ell_g$ the $g^{\text{th}}$ column of $L$ and $\beta_g$ the $g^{\text{th}}$ column of $B$. Let $\tilde{\beta}_g = \left( \begin{matrix}
@@ -89,7 +89,7 @@ where $\epsilon_{i_g}$ is independent of $C_2$. The \textbf{means} of the random
 \mu_{1_g} = \mu_{1_g}\left( \beta_g, \ell_g \right) = E\left( y_{1_g} \mid X_1, X_2, C_1 \right) = X_1^T \beta_g + C_1^T \ell_g
 \]
 \[
-\mu_{2_g} = \mu_{2_g}\left( \beta_g, \ell_g \right) = E\left( y_{2_g} \mid X_1, X_2, C_1 \right) = X_2^T \beta_g + \underbrace{E\left( C_2 \mid X_2, C_1 \right)^T}_{= X_2^T \hat{\Omega}^T + O\left( \frac{1}{\sqrt{n_1}} \right)} \ell_g.
+\mu_{2_g} = \mu_{2_g}\left( \beta_g, \ell_g \right) = E\left( y_{2_g} \mid X_1, X_2, C_1 \right) = X_2^T \beta_g + \underbrace{E\left( C_2 \mid X_2, C_1 \right)^T}_{= X_2^T\left( \hat{\Omega}^T + O\left( \frac{1}{\sqrt{n_1}} \right) \right)} \ell_g.
 \]
 The \textbf{variances} are
 \[
@@ -120,7 +120,7 @@ Next, we define
 \[
 U = \left[ \begin{matrix}
 X_1 & X_2\\
-C_1 & E\left( C_2 \mid X_1, X_2, C_2 \right)
+C_1 & E\left( C_2 \mid X_1, X_2, C_1 \right)
 \end{matrix} \right] \left( \begin{matrix}
 \frac{1}{\sigma_g^2} \left( y_{1_g} - \mu_{1_g} \right)\\
 G\left( \ell_g \right)^{-1}\left( y_{2_g} - \mu_{2_g} \right)
@@ -130,14 +130,14 @@ and
 \[
 T = -E\left( \frac{dU}{d\tilde{\beta}} \mid X_1, X_2, C_1 \right) = \text{Var}\left( U \mid X_1, X_2, C_1 \right) = \left[ \begin{matrix}
 X_1 & X_2\\
-C_1 & E\left( C_2 \mid X_1, X_2, C_2 \right)
+C_1 & E\left( C_2 \mid X_1, X_2, C_1 \right)
 \end{matrix} \right] \left( \begin{matrix}
 \frac{1}{\sigma_g^2} I_{n_1} & 0\\
 0 & G\left( \ell_g \right)^{-1}
 \end{matrix} \right) \left[ \begin{matrix}
 X_1 & X_2\\
-C_1 & E\left( C_2 \mid X_1, X_2, C_2 \right)
-\end{matrix} \right]^T
+C_1 & E\left( C_2 \mid X_1, X_2, C_1 \right)
+\end{matrix} \right]^T = 
 \]
 \[
 \left[ \begin{matrix}
@@ -149,7 +149,16 @@ C_1 & \hat{\Omega} X_2
 \end{matrix} \right)}_{\lambda_{\min} > \delta, \lambda_{\max} < Const} \left[ \begin{matrix}
 X_1 & X_2\\
 C_1 & \hat{\Omega} X_2
-\end{matrix} \right]^T \left( 1 + O_P\left( \frac{1}{\sqrt{n_1}} \right) + O_P\left( \frac{1}{n_1} \right) \right).
+\end{matrix} \right]^T \left( 1 + O_P\left( \frac{1}{\sqrt{n_1}} \right) + O_P\left( \frac{1}{n_1} \right) \right) \approx \left[ \begin{matrix}
+X_1 & X_2\\
+C_1 & \hat{\Omega} X_2
+\end{matrix} \right] \underbrace{\left( \begin{matrix}
+\frac{1}{\sigma_g^2} I_{n_1} & 0\\
+0 & G\left( \ell_g \right)^{-1}
+\end{matrix} \right)}_{\lambda_{\min} > \delta, \lambda_{\max} < Const} \left[ \begin{matrix}
+X_1 & X_2\\
+C_1 & \hat{\Omega} X_2
+\end{matrix} \right]^T.
 \]
 The \textbf{Newton Updates} are then
 \[
@@ -158,6 +167,22 @@ The \textbf{Newton Updates} are then
 
 \subsection{What I need to Prove}
 I still need prove that the estimator $\hat{\tilde{\beta}} \stackrel{P}{\to} \tilde{\beta}$ when $n_1 = O\left( n_2 \right)$ and under what conditions we have asymptotic normality. Once I prove these, I already have a proof showing that if consistency and asymptotic normality hold when $\sigma_g^2$ is know, it also holds when is use the OLS plugin estimator for $\sigma_g^2$ based on the $n_1$ individuals.
+
+\subsection{Other Possible Models}
+In the above model I assumed that the methylation response $Y$ are M-values (i.e. $\text{logit}\left( \frac{\#\text{methylated$ + \alpha$}}{\#\text{methylated} + \#\text{unmethylated$ + \alpha$}} \right)$, $\alpha$ recommended by Illumina). The data we collect are actually count data, so a more appropriate model for the number of methylation events is binomial, i.e. if $y_{ig}$ is the number of observed methylated residues for site $g$ and $n_{ig}$ the total number of times we observe site $g$ for individual $i$,
+\[
+y_{ig} \sim \text{Bin}\left( n_{ig}, \pi_{ig} \right), \text{ } \pi_{ig} = f\left( \text{covariates for person $i$}, \tilde{\beta}_g \right)
+\]
+We can use the quasi-likelihood method above with a modification to the variance, assuming a logit link function. That is, if $V = V\left( \tilde{\beta}_g \right) = \left( \begin{matrix}
+\sigma_g^2 I_{n_1} & 0\\
+0 & G\left( \ell_g \right)
+\end{matrix} \right)$, the new variance we would use would be
+\[
+V_{\text{Bin}} = \Gamma^{1/2} V \Gamma^{1/2}
+\]
+where $\Gamma = \text{diag}\left( \text{var}\left( \mu_1 \right), \ldots, \text{var}\left( \mu_{n_1 + n_2} \right) \right)$. Note that for $n_2 = 0$, this is just the dispersed binomial variance. This type of variance modification was used in McPeek, 2016 to correct for population specific effects in binary response data.
+
+The only benefit to using M-values that we can better correct batch effects present in the data.
 
 \subsection{Review of Current Methods}
 To my knowledge there are three current methods to correct for cell type in methylation experiments, 2 by Houseman and 1 by Zhou.
@@ -177,14 +202,17 @@ To my knowledge there are three current methods to correct for cell type in meth
 			
 		\item \textbf{Zhou, 2014}: Zhou uses a linear regression treating methylation as the covariate and disease status as the response. He first forms that individual relatedness matrix $\Phi$ using the centered methylation matrix as a proxy for individual relatedness. He then iteratively adds principle components of $\Phi$ until only a small fraction of sites are significantly correlated with the phenotype. The problems here are:
 			\begin{enumerate}
-			\item The method is very adhoc and the statistical properties are not very well understood.
+			\item The method is very adhoc and the statistical properties are not very well understood. 
 			\item You can only look at one covariate at a time. You cannot test the hypothesis that methylation is uncorrelated with $\geq 2$ covariates at once.
 			\item You lose power when performing OLS with binary response (in comparison to a GLM).
 			\end{enumerate}
+			
+	The criticism of all of the above methods is one has no idea if the assumptions you are making on the contribution of the effect due to cell type are correct. 
 	\end{enumerate}
 I think the method I describe above is important for those performing large DNA methylation experiments when experimenters are unsure how methylation changes across cell type and how cell type varies across covariates. Michelle has Hutterite/Amish data at both extremes:
 \begin{enumerate}
-\item 30 Hutterite children ages 7-14 
+\item 30 Hutterite children ages 7-14 where cell type appears to be INDEPENDENT of the primary covariates (age, asthma, sex). If Houseman or Zhou were used here, we would incorrectly remove the majority of the effect.
+\item Hutterite and Amish individuals whose cell type differs due to community, but no other covariates. No unsupervised model would be able to account for this type of data structure.
 \end{enumerate}
 
 
