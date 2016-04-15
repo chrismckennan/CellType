@@ -9,4 +9,5 @@ Estimator.2 <- function(var, C.1, X.1, X.2, Omega, V, y.1, y.2, theta.0, tol) {
 	
 	beta.0 <- theta.0[1:d]
 	l.0 <- theta.0[(d+1):(d+K)]
+	
 }
