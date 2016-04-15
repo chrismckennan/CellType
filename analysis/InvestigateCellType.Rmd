@@ -812,6 +812,20 @@ perp.2 <- diag(n.2) - Cov.predict.2 %*% solve(t(Cov.predict.2) %*% Cov.predict.2
 
 Create variance matrix $V \in \mathbb{R}^{Kn_2 \times Kn_2}$ where $G = I_{n_2} \otimes \ell_g^T V I_{n_2} \otimes \ell_g + \sigma^2 I_{n_2}$.
 
+```{r CreateV_tmp}
+V <- array(NA, dim=c(n.2*K, n.2*K))
+for (i in 1:n.2) {
+  x.i <- cbind(X.2[,i])
+  p.i <- t(Omega.norm) %*% x.i
+
+  V.i <- sigma.cell.norm^2 * ( diag(as.vector(p.i)) - p.i %*% t(p.i) )  #ith block is V.i + S.i
+  V[((i-1)*K+1):(i*K),((i-1)*K+1):(i*K)] <- V.i
+  
+}
+```
+
+
+
 ```{r CreateV}
 V <- array(NA, dim=c(n.2*K, n.2*K))
 for (i in 1:n.2) {
