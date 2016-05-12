@@ -182,3 +182,67 @@ MaxLike.NewtonLS <- function(X, C, Omega_start, v_start, tol, vfixed=F) {
 	return(list(Omega = Omega.0, I = CompFisher(X, Omega.0, v.0), v = v.0, infnorm.grad = norm.grad))
 }
 
+
+###The below functions estimate Omega using a quasi-likelihood as opposed to the normal approximation to the Dirichlet###
+#Input: Omega is K x d
+#X is d x n
+#C is K x n
+
+Compute.UandT <- function(X, C, Omega) {
+	K <- nrow(C)
+	d <- nrow(X)
+	n <- ncol(X)
+	Means <- Omega %*% X
+	Resids <- C - Means
+	U <- rep(0, d*K)
+	T <- array(0, dim=c(d*K,d*K))
+	for (i in 1:n) {
+		x.i <- X[,i]
+		mu.i <- Means[,i]
+		resids.i <- Resids[,i]
+		kron.xi <- kronecker(diag(K), cbind(x.i))
+		V.mu.i <- diag(mu.i) - cbind(mu.i) %*% rbind(mu.i)
+		
+		U <- U + kron.xi %*% solve( V.mu.i, resids.i )
+		T <- T + kron.xi %*% solve( V.mu.i, t(kron.xi) )
+	}
+	return(list(U=U, T=T))
+}
+
+Compute.Omega.QL <- function(X, C, Omega.0, tol=1e-8) {
+	n <- ncol(X)
+	d <- nrow(X)
+	K <- nrow(C)
+	count <- 1
+	diff <- tol + 1
+	rho <- 3/4
+	
+	while(diff > tol && count < 1e4) {
+		Stat.0 <- Compute.UandT(X, C, Omega.0)
+		U.0 <- Stat.0$U
+		diff <- max(abs(U.0))
+		T.0 <- Stat.0$T
+		dir.0 <- solve(T.0, U.0)
+		
+		count.check <- 0
+		while(!CheckBound(t(X), t(Omega.0), dir.0) && count.check < 1000) {
+			dir.0 <- rho*dir.0
+			count.check <- count.check + 1
+		}	
+		
+		Omega.0 <- Omega.0 + t( matrix(dir.0, nrow=d, ncol=K) )
+	}
+	Mean.final <- Omega.0 %*% X
+	Resids.final <- C - Omega.0 %*% X
+	v <- 0
+	for (i in 1:n) {
+		mu.i <- Mean.final[,i]
+		resids.i <- Resids.final[,i]
+		v <- v + 1/(n-d)/K * sum( resids.i * solve( diag(mu.i) - cbind(mu.i) %*% rbind(mu.i), resids.i ) )
+	}
+	
+	return(list(v=v, Omega=Omega.0, FI=1/v * T.0))
+}
+
+
+

@@ -1,0 +1,1401 @@
+---
+title: "Investigate cell type and how it relates to covariates"
+author: "Chris McKennan"
+date: 2016-02-05
+---
+
+**Last updated:** `r Sys.Date()`
+
+**Code version:** `r system("git log -1 --format='%H'", intern = TRUE)`
+
+```{r chunk-options, include=T}
+source("chunk-options.R")
+source("../R/OptimizeLogLike.R")
+source("../R/OptimizeLogLike_Ksigma.R")
+source("../R/SimSparseData.R")
+source("../R/EstimateBeta.R")
+source("../R/CrudeEstDim.R")
+source("../R/AnalyzeSimResults.R")
+```
+
+The purpose of this file is to investigate how cell type is related to the covariates. That is, do we have any hope in predicting cell type given an individuals covariate information. In order to apply our supervised method, we need the variance in cell type among unrelated individuals to be small, given the covariate information.
+
+## Load required functions
+
+```{r libraries}
+#library('minfi')
+#library('RefFreeEWAS')
+library('nlme')
+library('knitr')
+library('printr')
+library('gtools')
+library('leapp')
+#install.packages("../RPackages/cate", type="source", repos=NULL)
+library('esaBcv')
+library('MASS')
+library('ruv')
+library('corpcor')
+library('cate')
+library('qvalue')
+```
+
+
+## Get data into R
+
+Get the data into R and initialize global variables.
+
+```{r GetData}
+path.cov <- "/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/AmishHutterite/HAmeth_covar_60null_123015.txt"
+Cov.orig <- data.frame( read.table(path.cov, sep="\t", dec=".", header=T, check.names=F) )
+path.M <- "~/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/AmishHutterite/HAmeth_Mval_prePCA_60null_123015.txt"
+M.orig <- data.frame( read.table(path.M, sep="\t", dec=".", header=T, check.names=F) )
+p <- nrow(M.orig)      #Number of sites
+n.orig <- ncol(M.orig) - 1
+```
+
+Remove individuals with unmeasured cell type
+```{r CleanData}
+ind.remove <- which(is.na(Cov.orig$Other))
+M <- as.matrix(M.orig[,2:(n.orig+1)])
+M <- M[,-ind.remove]
+Cov <- Cov.orig[-ind.remove,]
+n <- nrow(Cov)        #Number of individuals
+```
+
+Take covariates of interest: Sex, Group, Age. I will also only use Tcells, Eos and Neutrophils. The rest will be absorbed into the 'Other' category. 
+```{r CreateCovariates}
+ind.cell <- c(1,3,4)
+Age.cutoff <- 11.5   #Pre and post pubescent
+
+K <- length(ind.cell)
+X.all <- t(model.matrix(~sex + group + as.numeric(age > Age.cutoff), data=Cov))   #A d x n design matrix
+d <- nrow(X.all)
+C.all <- t(as.matrix( Cov[,31:ncol(Cov)] ))/100   #number of cell types x n matrix
+
+beta.X.all <- solve( X.all %*% t(X.all) ) %*% X.all
+H.all <- t(X.all) %*% beta.X.all
+Omega.OLS <- C.all %*% t(beta.X.all)     #A K x d matrix
+var.OLS <- diag(C.all %*% (diag(n)-H.all) %*% t(C.all))/(n-d)
+var.stand <- var.OLS/Omega.OLS[,1]/(1-Omega.OLS[,1])
+
+C.0 <- C.all[ind.cell,]      #Tcells, Eos, Neutrophils. This contains all individuals and is a K x d matrix
+Omega.start <- Omega.OLS[ind.cell,]    #A K x d matrix
+sigma.cell.start <- median(sqrt(var.stand[ind.cell]))
+```
+
+##Estimate $\Omega$
+
+Use ML to estimate $\Omega$
+```{r EstOmega_ML}
+ML.Cell <- MaxLike.NewtonLS(t(X.all), t(C.0), t(Omega.start), sigma.cell.start^2, 1e-8, vfixed=F)
+Omega.ML <- t(ML.Cell$Omega)     #A K x d matrix
+var.cell <- ML.Cell$v
+Var.Omega <- solve(ML.Cell$I)[1:(d*K), 1:(d*K)]
+Var.Omega.full <- solve(ML.Cell$I)
+```
+
+Use quasi-likelihood to estimate $\Omega$. I think this gives a better estimate of the variance in our system
+```{r EstOmega}
+QL.Cell <- Compute.Omega.QL(X.all, C.0, Omega.start, 1e-8)
+Omega.QL <- QL.Cell$Omega     #A K x d matrix
+var.cell <- QL.Cell$v
+Var.Omega <- solve(QL.Cell$FI)
+```
+
+
+Create the matrix V which stores the variance due to cell type. I do not include the uncertainty due to estimation here
+```{r CreateV}
+V <- array(0, dim=c(n*K, n*K))
+Sigma.hat <- array(0, dim=c(K,K))
+Sigma.hat2 <- array(0, dim=c(K,K))
+for (i in 1:n) {
+  x.i <- cbind(X.all[,i])
+  kron.xi <- kronecker(diag(K), t(x.i))
+  p.i <- Omega.QL %*% x.i
+  S.i <- kron.xi %*% Var.Omega %*% t(kron.xi)
+  
+  V.i <- var.cell * ( diag(as.vector(p.i)) - p.i %*% t(p.i) )  #ith block is V.i + S.i
+  V[((i-1)*K+1):(i*K),((i-1)*K+1):(i*K)] <- V.i #+ S.i
+  Sigma.hat <- 1/n * var.cell * ( diag(as.vector(p.i)) - p.i %*% t(p.i) ) + Sigma.hat
+  Sigma.hat2 <- 1/n * cbind(C.0[,i] - as.vector(p.i)) %*% rbind(C.0[,i] - as.vector(p.i)) + Sigma.hat2
+  
+ # for (j in (i+1):n.2) {
+  #  x.j <- cbind(X.2[,j])
+   # kron.xj <- kronecker(diag(K), t(x.j))
+  #  S.ij <- kron.xi %*% var.Omega %*% t(kron.xj)
+  #  V[((i-1)*K+1):(i*K), ((j-1)*K+1):(j*K)] = S.ij
+  #  V[((j-1)*K+1):(j*K), ((i-1)*K+1):(i*K)] = t(S.ij)
+  #}
+}
+S <- t(chol(Sigma.hat))     #SS' = Sigma.hat
+```
+We see that $\hat{\Sigma} = \frac{1}{n}\sum\limits_{i=1}^n \sigma_{\text{cell}}^2 V\left( \mu_i \right)$ and $\hat{\Sigma}_2 = \frac{1}{n}\sum\limits_{i=1}^n \left( c_i - \mu_i \right)\left( c_i - \mu_i \right)^T$ are about the same. I will approximate $C_2 \approx MN_{K \times n_2} \left( L\hat{\Omega}_{QL}X_2, \hat{\Sigma}, I_{n_2} \right)$. $\hat{\Sigma}$ minimizes the KL-divergence between a matrix normal with independent columns and a dirichlet distribution.
+
+##Partition Individuals to Test Methods
+In order to test my method of using some cell type information against CATE which estimates $\Omega$ WITHOUT using cell type information, I will randomly partition the $n$ indiviuals into groups of size $n_1$, $n_2$, and condition on the cell type information in $C_1 \in \mathbb{R}^{K \times n_1}$.
+
+```{r PartitionInd, eval=T}
+n.1 <- 40
+n.2 <- n - n.1
+index.1 <- sample((1:n), n.1, replace=F)
+
+C.1 <- C.0[,index.1]     #Cell type for first set of individuals. I will condition on this
+C.2 <- C.0[,-index.1]    #Cell type for second set. I will NOT condition on this
+X.1 <- X.all[,index.1]   #Covariates for first set of individuals, a d x n.1 matrix
+X.2 <- X.all[,-index.1]  #Covariates for second set of individuals, a d x n.2 matrix
+Cov.1 <- rbind(X.1, C.1)    #A (d+K) x n.1 matrix of all covariates. This will be used to get starting value for Gamma (i.e. with svd)
+orthog.cov.1 <- diag(n.1) - t(Cov.1) %*% solve(Cov.1 %*% t(Cov.1), Cov.1)
+
+Y.1 <- M[,index.1]       #M-values for first set of individuals
+Y.2 <- M[,-index.1]      #M-values for second set of individuals
+
+Cov.all <- rbind(X.all, C.0)    #ALL covariates. This will be used to get the baseline estimate for B
+orthog.cov.all <- diag(n) - t(Cov.all) %*% solve(Cov.all%*%t(Cov.all), Cov.all)
+```
+
+Get relavent data to plug into my method
+```{r RelData}
+qr.all <- qr(t(X.all))
+Q.Xall <- qr.Q(qr(cbind( qr.Q(qr.all), diag(n) )))[,1:n]
+
+qr.X1 <- qr(t(X.1))
+qr.X2 <- qr(t(X.2))
+Q.X1 <- qr.Q(qr(cbind( qr.Q(qr.X1), diag(n.1) )))[,1:n.1]
+Q.X2 <- qr.Q(qr(cbind( qr.Q(qr.X2), diag(n.2) )))[,1:n.2]
+R.X1 <- qr.R(qr.X1)
+R.X2 <- qr.R(qr.X2)
+
+Y.1.tilde <- Y.1 %*% Q.X1
+Y.1.2 <- Y.1.tilde[,(d+1):n.1]    #A p x (n.1 - d) matrix, with cell type observed. To be used in finding L and Gamma
+Y.1.1 <- Y.1.tilde[,1:d]          #A p x d matrix
+Y.2.tilde <- Y.2 %*% Q.X2
+Y.2.2 <- Y.1.tilde[,(d+1):n.2]    #A p x (n.2- d) matrix. To be used in fin
+Y.2.1 <- Y.2.tilde[,1:d]          #A p x d matrix
+
+C.1.tilde <- C.1 %*% Q.X1         #A K x n.1 matrix
+F.mat <- C.1.tilde[,(d+1):n.1]    #A K x (n.1 - d) matrix
+```
+
+Get starting values for $\Gamma$, $L$, $\Lambda$, $\Sigma$.
+```{r StartingValues, eval=F}
+r.confound <- 15         #Additional confounders in the model, i.e. Gamma is p x r.confound
+scale.factor <- 1#/svd(F.mat)$d[1]    #Make largest singular value of F.mat 1. If I do this, I will need to scale Lambda_EM <- scale.factor^2 * Lambda, where Lambda_EM is to be used in the EM. I will call F.mat.EM <- scale.factor * F.mat and L.EM <- 1/scale.factor * L
+F.mat.EM <- scale.factor * F.mat
+Lambda.0.EM <- Sigma.hat * scale.factor^2
+L.0.EM <- Y.1.2 %*% t(F.mat) %*% solve(F.mat %*% t(F.mat)) / scale.factor
+
+##Find Gamma.0 and Sigma.0 by svd using ALL the data##
+W.svd <- svd(orthog.cov.all %*% t(M) %*% M %*% orthog.cov.all / p)$v[,1:r.confound]
+Gamma.0 <- M %*% orthog.cov.all %*% W.svd
+tmp.Cov <- cbind(t(Cov.all), W.svd)
+tmp.orthog <- diag(n) - tmp.Cov %*% solve(t(tmp.Cov) %*% tmp.Cov) %*% t(tmp.Cov)
+M.tmp <- M %*% tmp.orthog
+Sigma.0 <- rowSums(M * M.tmp) / (n - ncol(tmp.Cov))
+
+v.GtSG <- svd(t(sweep(Gamma.0, 1, 1/Sigma.0, "*")) %*% Gamma.0 / p)$v
+Gamma.0 <- Gamma.0 %*% v.GtSG
+
+```
+
+##Apply my method
+
+Optimize for $L$, $\Gamma$, $\Lambda$, $\Sigma$ using maximum likelihood. Note that the data are not informative for $\Gamma$ with only 60 individuals, so I set the tolerance to be $10^{-3}$. We can accurately estimate $L$, $\Lambda$, $\Sigma$, however. For this data set, it takes ~10 minutes to converge.
+
+```{r EMPartialCells, eval=F}
+EM.PartialCell <- FullEM(L.0, Sigma.0, Gamma.0, Lambda.0, Y.1.2 - apply(Y.1.2, 1, mean), Y.2.2 - apply(Y.2.2, 1, mean), F.mat.EM - apply(F.mat.EM, 1, mean), 1e-3, 5e3)
+L <- EM.PartialCell$L * scale.factor
+Gamma <- EM.PartialCell$Gamma
+Lambda <- EM.PartialCell$Lambda / scale.factor^2
+Sigma <- EM.PartialCell$Sigma
+```
+
+
+##Apply CATE to all 59 individuals
+I will treat cell type as a nuisance parameter and just estimate the $d-1$ coefficients for $B$ (I don't care about the intercept).
+
+Estimate the latent dimension INCLUDING Cell type in the model
+```{r EstRCell1, eval=F}
+Cov.orthog <- diag(n) - t(Cov.all) %*% solve(Cov.all %*% t(Cov.all), Cov.all)
+M.resids <- M %*% Cov.orthog
+pvalues.r <- Find.r(M.resids, 30, 20)   #Only look at 30 possible singular values and 20 permutations
+r.confound.withCell <- 30 - sum(pvalues.r)     #A crude, but reliable estimate for the latent dimension to be used in factor analysis
+```
+
+Estimate the latent dimension NOT INCLUDING Cell type in the model
+```{r EstRCell, eval=F}
+X.orthog <- diag(n) - t(X.all) %*% solve(X.all %*% t(X.all), X.all)
+M.resids.X <- M %*% X.orthog
+pvalues.r.X <- Find.r(M.resids.X, 30, 20)   #Only look at 30 possible singular values and 20 permutations
+r.confound.noCell <- 30 - sum(pvalues.r.X)     #A crude, but reliable estimate for the latent dimension to be used in factor analysis
+```
+
+
+Apply CATE to the M-value data with and without cell type data
+```{r CATEall, eval=F}
+data.CATE <- data.frame(cbind(t(X.all)[,2:d], t(C.0)))
+data.CATE.all <- data.frame(cbind(t(X.all)[,2:d], t(C.all[1:(nrow(C.all)-1),])))
+colnames(data.CATE) <- c("sexm", "groupHutterite", "Age", "Tcells", "Eos", "Neutro")
+colnames(data.CATE.all) <- c("sexm", "groupHutterite", "Age", "Tcells", "Bcells", "Eos", "Neutro", "Mono")
+
+#conf.cell <- est.confounder.num(~sexm + groupHutterite | Tcells + Eos + Neutro , X.data=data.CATE, Y=t(M), method="bcv", bcv.plot = T); r.cell <- conf.cell$r
+#conf.nocell <- est.confounder.num(~sexm + groupHutterite, X.data=data.CATE, Y=t(M), method="bcv", bcv.plot = T); r.nocell <- conf.nocell$r
+conf.cell.all <- est.confounder.num(~sexm + groupHutterite | Tcells + Eos + Neutro + Bcells + Mono , X.data=data.CATE.all, Y=t(M), method="bcv", bcv.plot = T, rmax=7); r.cell.all <- conf.cell.all$r
+
+#cate.withCell <- cate(~sexm + groupHutterite | Tcells + Eos + Neutro, X.data=data.CATE, Y=t(M), r=r.cell, fa.method="ml", adj.method="rr", calibrate=F)
+#Z.cell <- cate.withCell$Z
+#X.cell <- cbind(rep(1,n), data.CATE$sexm, data.CATE$groupHutterite, data.CATE$Tcells, data.CATE$Eos, data.CATE$Neutro, Z.cell)
+#d.cell <- ncol(X.cell)
+#beta.op.cell <- solve(t(X.cell) %*% X.cell) %*% t(X.cell)
+#orthog.X.cell <- diag(n) - X.cell %*% solve(t(X.cell) %*% X.cell) %*% t(X.cell)
+#B.est.cell <- M %*% t(beta.op.cell)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+#Sigma.cell <- 1/(n-d.cell) * rowSums( M * (M %*% orthog.X.cell) )
+#Var.row.cell <- solve(t(X.cell) %*% X.cell)
+#Zscores.cell <- (B.est.cell[,2:3] %*% diag(1/sqrt(diag(Var.row.cell[2:3,2:3]))))/sqrt(Sigma.cell)
+#P.values.cell <- 2 - 2 * pt( abs(Zscores.cell), df=n-d.cell )
+#Zscores.L.cell <- (B.est.cell[,4:6] %*% diag(1/sqrt(diag(Var.row.cell[4:6,4:6]))))/sqrt(Sigma.cell)
+#P.values.L.cell <- 2 - 2 * pt( abs(Zscores.L.cell), df=n-d.cell )
+#
+#cate.noCell <- cate(~sexm + groupHutterite, X.data=data.CATE, Y=t(M), r=r.nocell, fa.method="ml", adj.method="rr", calibrate=F)
+#Z.nocell <- cate.noCell$Z
+#X.nocell <- cbind(rep(1,n), data.CATE$sexm, data.CATE$groupHutterite, Z.nocell)
+#d.nocell <- ncol(X.nocell)
+#beta.op.nocell <- solve(t(X.nocell) %*% X.nocell) %*% t(X.nocell)
+#orthog.X.nocell <- diag(n) - X.nocell %*% solve(t(X.nocell) %*% X.nocell) %*% t(X.nocell)
+#B.est.nocell <- M %*% t(beta.op.nocell)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+#Sigma.nocell <- 1/(n-d.nocell) * rowSums( M * (M %*% orthog.X.nocell) )
+#Var.row.nocell <- solve(t(X.nocell) %*% X.nocell)
+#Zscores.nocell <- (B.est.nocell[,2:3] %*% diag(1/sqrt(diag(Var.row.nocell[2:3,2:3]))))/sqrt(Sigma.nocell)
+#P.values.nocell <- 2 - 2 * pt( abs(Zscores.nocell), df=n-d.nocell )
+
+cate.withCell.all <- cate(~sexm + groupHutterite | Tcells + Bcells +  Eos + Neutro + Mono, X.data=data.CATE.all, Y=t(M), r=r.cell.all, fa.method="ml", adj.method="rr", calibrate=F)
+Z.cell.all <- cate.withCell.all$Z
+X.cell.all <- cbind(rep(1,n), data.CATE.all$sexm, data.CATE.all$groupHutterite, data.CATE.all$Tcells, data.CATE.all$Eos, data.CATE.all$Neutro, data.CATE.all$Bcells, data.CATE.all$Mono, Z.cell.all)
+d.cell.all <- ncol(X.cell.all)
+beta.op.cell.all <- solve(t(X.cell.all) %*% X.cell.all) %*% t(X.cell.all)
+orthog.X.cell.all <- diag(n) - X.cell.all %*% solve(t(X.cell.all) %*% X.cell.all) %*% t(X.cell.all)
+B.est.cell.all <- M %*% t(beta.op.cell.all)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.cell.all <- 1/(n-d.cell.all) * rowSums( M * (M %*% orthog.X.cell.all) )
+Var.row.cell.all <- solve(t(X.cell.all) %*% X.cell.all)
+Zscores.cell.all <- (B.est.cell.all[,2:3] %*% diag(1/sqrt(diag(Var.row.cell.all[2:3,2:3]))))/sqrt(Sigma.cell.all)
+P.values.cell.all <- 2 - 2 * pt( abs(Zscores.cell.all), df=n-d.cell.all )
+Zscores.L.cell.all <- (B.est.cell.all[,4:8] %*% diag(1/sqrt(diag(Var.row.cell.all[4:8,4:8]))))/sqrt(Sigma.cell.all)
+P.values.L.cell.all <- 2 - 2 * pt( abs(Zscores.L.cell.all), df=n-d.cell.all )
+
+for (i in 1:ncol(P.values.L.cell.all)) {
+  tmp.q.i <- qvalue(P.values.L.cell.all[,i])
+  hist(P.values.L.cell.all[,i], main=paste(rownames(C.all)[i], as.character(round(tmp.q.i$pi0*100)/100), sep=", pi0 = "))
+}
+
+#plot(cate.withCell$beta[,2], cate.noCell$beta[,2], xlim=c(-2,2), ylim=c(-2,2))
+#abline(a=0, b=1, col="red")
+
+#plot(Zscores.cell.all[,2], Zscores.nocell[,2], main="Difference in CATE With and Without Observed Cell Types", xlab="Corrected z-scores WITH Cell Type Observed", ylab="Corrected z-scores WITHOUT Cell Type Observed"); abline(a=0, b=1, col="red")
+#ind.points.neg.all <- which(Zscores.cell.all[,2] <= -5 & Zscores.nocell[,2] > -5)
+#ind.points.pos.all <- which(Zscores.cell.all[,2] >= 5 & Zscores.nocell[,2] < 5)
+#points(Zscores.cell.all[ind.points.neg.all,2], Zscores.nocell[ind.points.neg.all,2], col="blue")
+#points(Zscores.cell.all[ind.points.pos.all,2], Zscores.nocell[ind.points.pos.all,2], col="blue")
+
+#ind.points.negp.all <- which(Zscores.cell.all[,2] > -5 & cate.noCell$beta.t[,2] <= -5)
+#ind.points.posp.all <- which(Zscores.cell.all[,2] < 5 & cate.noCell$beta.t[,2] >= 5)
+#points(Zscores.cell.all[ind.points.negp.all,2], Zscores.nocell[ind.points.negp.all,2], col="violet")
+#points(Zscores.cell.all[ind.points.posp.all,2], Zscores.nocell[ind.points.posp.all,2], col="violet")
+#(length(ind.points.neg.all) + length(ind.points.pos.all) - length(ind.points.negp) - length(ind.points.posp))/(length(which(Zscores.nocell[,2] <= -5)) + length(which(Zscores.nocell[,2] > 5)))
+
+#ind.points.neg <- which(Zscores.cell[,2] <= -5 & Zscores.nocell[,2] > -5)
+#ind.points.pos <- which(Zscores.cell[,2] >= 5 & Zscores.nocell[,2] < 5)
+#ind.points.negp <- which(Zscores.cell[,2] > -5 & Zscores.nocell[,2] <= -5)
+#ind.points.posp <- which(Zscores.cell[,2] < 5 & Zscores.nocell[,2] >= 5)
+#(length(ind.points.neg) + length(ind.points.pos) - length(ind.points.negp) - length(ind.points.posp))/(length(which(Zscores.nocell[,2] <= -5)) + length(which(Zscores.nocell[,2] > 5)))
+
+#q.cell.all.group <- qvalue(P.values.cell.all[,2])
+#q.cell.group <- qvalue(P.values.cell[,2])
+#q.nocell.group <- qvalue(P.values.nocell[,2])
+```
+If we use CATE's asymptotic variance corrections, it looks like we get 148% more DMRs when we use ALL cell types (we have 638 points with |z-score| > 5 without cell type and 1579 DMRs with cell type). This produces a nice p-value histogram for group-specific differences in with and without cell types (i.e. uniform under the null). However, when we use Bcells and monocytes, the p-value histogram for sex specific differences does NOT look uniform under the null hypothesis.
+
+If I used the BLUP for the random effect $Z = W + \alpha X$ as a proxy for the unobserved covariates, I get a much more CONSERVATIVE p-values. I think this is more appropriate, since it penalizes $r$'s that are too large and explain all of the variance.
+
+##Set up Simulations and Describe Why we Lose Power Without Cell Type
+
+These are initialized parameters used in all simulations
+```{r InitSimData, include=F, eval=F}
+K.all <- nrow(C.all) - 1
+Cov.cell.all <- rbind(X.all[1:3,], C.all[1:K.all,])
+Gamma.sim <- B.est.cell.all[,(3+K.all+1):(ncol(B.est.cell.all))]     #p x r
+Sigma.sim <- Sigma.cell.all     #p-vector
+Z.sim <- Z.cell.all
+
+Omega.sim <- Omega.QL                #K x d
+Omega.sim[1,2] <- Omega.sim[1,1]
+Omega.sim[1,3] <- Omega.sim[1,1]
+Omega.sim[2,2] <- Omega.sim[2,1]
+Omega.sim[2,3] <- Omega.sim[2,1]
+var.cell.sim <- var.cell     #C ~ Dirichlet(alpha.cell *Omega X )
+alpha.cell.sim <- 1/var.cell.sim - 1
+
+L.sim <- B.est.cell.all[,4:8]      #p x K.all matrix
+alpha.sim <- cate.withCell.all$alpha     #r x (d-1)
+
+q.value.cell.1 <- qvalue(P.values.nocell[,1]); pi.sex <- q.value.cell.1$pi0      #1 = sex
+q.value.cell.2 <- qvalue(P.values.nocell[,2]); pi.group <- q.value.cell.2$pi0      #2 = group, which is correlated with various cell types
+min.qvalue <- 1      #Anything below this q-value will be used to estimate the variance of non-zero effects
+var.group <- var(Zscores.nocell[which(q.value.cell.2$qvalues < min.qvalue),2])   #variance of standardized effects
+var.sex <- var(Zscores.nocell[which(q.value.cell.1$qvalues < min.qvalue),1])
+
+Sigma.group <- B.est.nocell[,3]/Zscores.nocell[,2]
+Sigma.sex <- B.est.nocell[,2]/Zscores.nocell[,1]
+```
+
+
+The below code creates a plot of the OLS estimator with JUST $X$ and the OLS estimator with $X$ and $C$. The naive estimates with $C$ are significantly larger than the naive effects estimates without $C$. There is something going on here...
+```{r InvestigateCellEffect, eval=F}
+group.nocell <- (M %*% t(X.all) %*% solve(X.all %*% t(X.all)) )[,3]
+group.cell <- (M %*% t(Cov.all) %*% solve(Cov.all %*% t(Cov.all)) )[,3]
+plot(group.cell, group.nocell, xlab="OLS Estimate for Group Effect WITH Cell type Observed", ylab="OLS Estiamte for Group Effect WITHOUT Cell type", main="Naive OLS Estimates", xlim=c(-2,2), ylim=c(-2,2))
+abline(a=0,b=1,col="red")
+tmp.reg <- lm(group.nocell ~ group.cell)
+abline(a=tmp.reg$coefficients[1], b=tmp.reg$coefficients[2], col="blue")
+
+#The above effect is due to a simple property of regression, and that is regression towards mediocrity. Basically, the OLS estimates for data in the presence of noise are shrunk towards the global mean, and are therefore generally SMALLER. If we observe cell type (or any confounder that explains a significant portion of the variability), the OLS estimator would be LARGER than if we had NOT observed cell type.
+
+#Simulate data to re-create the above effect#
+b.sim <- rbinom(p, 1, 1-pi.group) * sqrt(0.04) * rnorm(p)
+y.sim <- cbind(b.sim) %*% X.all[3,] + (M %*% t(Cov.all) %*% solve(Cov.all %*% t(Cov.all)) )[,(d+1):K] %*% C.0 + matrix(rnorm(p*n), nrow=p, ncol=n ) * sqrt(Sigma.sim)
+tmp.cov <- cbind(rep(1,n), X.all[3,], t(C.0))
+tmp.cov.x <- cbind(rep(1,n), X.all[3,])
+ols.cell <- (y.sim %*% tmp.cov %*% solve(t(tmp.cov) %*% tmp.cov))[,2]
+ols.nocell <- (y.sim %*% tmp.cov.x %*% solve(t(tmp.cov.x) %*% tmp.cov.x))[,2]
+plot(ols.cell, ols.nocell, xlim=c(-3,3), ylim=c(-3,3), xlab="Beta.hat with Cell Type Observed", ylab="Beta.hat without Cell Type", main="Simulated Data Reproduces Regression Towards Mediocrity"); abline(a=0,b=1,col="red")
+```
+The reason we see a tilted distribution of z-scores and effect sizes is NOT because cell type is correlated with the effect of interest, but that the confounders explain a large portion of the variability in methylation. As $n,p \to \infty$, this difference becomes less pronounced. Basically, as $n,p \to \infty$, $\alpha^{(0)} = \alpha + \tilde{W}_1 \Vert X \Vert^{-1}(n) \to \alpha$, so the power with and without cell types should be identical asymptotically. Note that
+\[
+\Vert \alpha^{(0)}\Vert_2^2 = \Vert \alpha\Vert_2^2 + \frac{1}{\Vert X \Vert_2}\alpha^T \tilde{W}_1 + \frac{\tilde{W}_1^T \tilde{W}_1}{\Vert X \Vert_2^2}, \text{ } \tilde{W}_1^T \tilde{W}_1 \approx r
+\]
+meaning for smaller sample sizes and/or large $r$, the terms $\tilde{W}_1^T \tilde{W}_1$, $\Vert X \Vert_2(n)$ cannot be ignored and we will tend to underestimate the true effect sizes, as shown above.
+
+
+##Simulate Data
+
+I am observing the apparent loss of power with real data because it is difficult to get an objective estimate for the latent dimension $r$. It's dangerous to try and minimize the estimated $\pi_0$, as this will probably cause too many false positives. I think a reasonable method is bi-cross validation proposed by Owen. We will have to deal with the issue of "ugly" p-value histograms.
+
+```{r SimRealData, eval=F}
+set.seed(1988)
+
+d.sim <- d - 2
+r.sim <- r.cell.all
+Z.sim <- Z.cell.all
+pi0.vec <- c(0.8, 0.8, 0.8)
+var.B.vec <- c(var.sex, var.group, var.sex)
+Sigma.total <- cbind(Sigma.group, Sigma.sex)
+C.sim <- C.all[1:K.all,]
+orthog.X.sim <- diag(n) - t(X.all[1:3,]) %*% solve(X.all[1:3,] %*% t(X.all[1:3,])) %*% X.all[1:3,]
+proj.X.sim <- t(X.all[1:3,]) %*% solve(X.all[1:3,] %*% t(X.all[1:3,])) %*% X.all[1:3,]
+
+#B.sim <- cbind( matrix( rbinom(d.sim * p, 1, 1-pi0.vec[1:d.sim]), nrow=p, ncol=d.sim, byrow=T ) * matrix(rnorm(d.sim * p), nrow=p, ncol=d.sim) %*% diag(sqrt(var.B.vec[1:d.sim])) ) * sqrt(Sigma.total[,1:d.sim])
+B.sim <- matrix(0,nrow=p,ncol=2)   #B is sex, group.
+order.group <- order(q.value.cell.2$qvalues)
+order.sex <- order(q.value.cell.1$qvalues)
+for (i in 1:floor(p*(1-pi0.vec[1]))) {
+  B.sim[order.sex[i],1] <- B.est.nocell[order.sex[i],2]/abs(B.est.nocell[order.sex[i],2]) * abs(rnorm(1)) * sqrt(var.B.vec[1]) * sqrt(Sigma.total[order.sex[i],1])
+}
+for (i in 1:floor(p*(1-pi0.vec[1]))) {
+  B.sim[order.group[i],2] <- B.est.nocell[order.group[i],3]/abs(B.est.nocell[order.group[i],3]) * abs(rnorm(1)) * sqrt(var.B.vec[2]) * sqrt(Sigma.total[order.group[2],1])
+}
+
+data.sim <- data.frame(cbind(t(X.all[2:3,]), t(C.all[1:K.all,])))
+#confound.sim <- Gamma.sim %*% t(Z.sim)
+#resids.sim <- M %*% orthog.X.cell.all
+#Y.sim <- B.sim %*% X.all[2:3,] + L.sim %*% C.sim + confound.sim + resids.sim
+Y.sim <- B.sim %*% X.all[2:3,] + M   #Remove the linear effects due to group and sex, but keep effect due to cell type
+
+####Analyze simulated data####
+
+conf.cell.sim <- est.confounder.num(~sexm + groupHutterite | T_cells + Eos + Neutro , X.data=data.sim, Y=t(Y.sim), method="bcv", bcv.plot = T, rmax=10); r.cell.sim <- conf.cell.sim$r
+conf.nocell.sim <- est.confounder.num(~sexm + groupHutterite, X.data=data.sim, Y=t(Y.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+conf.cell.all.sim <- est.confounder.num(~sexm + groupHutterite | T_cells + Eos + Neutro + B_cells + Mono , X.data=data.sim, Y=t(Y.sim), method="bcv", bcv.plot = T, rmax=10); r.cell.all.sim <- conf.cell.all.sim$r
+
+cate.withCell.sim <- cate(~sexm + groupHutterite | T_cells + Eos, X.data=data.sim, Y=t(Y.sim), r=r.cell.sim, fa.method="ml", adj.method="rr", calibrate=F)
+Z.cell.sim <- cate.withCell.sim$Z
+X.cell.sim <- cbind(rep(1,n), data.sim$sexm, data.sim$groupHutterite, data.sim$T_cells, data.sim$Eos, data.sim$Neutro, Z.cell.sim)
+d.cell.sim <- ncol(X.cell.sim)
+beta.op.cell.sim <- solve(t(X.cell.sim) %*% X.cell.sim) %*% t(X.cell.sim)
+orthog.X.cell.sim <- diag(n) - X.cell.sim %*% solve(t(X.cell.sim) %*% X.cell.sim) %*% t(X.cell.sim)
+B.est.cell.sim <- Y.sim %*% t(beta.op.cell.sim)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.cell.sim <- 1/(n-d.cell.sim) * rowSums( Y.sim * (Y.sim %*% orthog.X.cell.sim) )
+Var.row.cell.sim <- solve(t(X.cell.sim) %*% X.cell.sim)
+Zscores.cell.sim <- (B.est.cell.sim[,2:3] %*% diag(1/sqrt(diag(Var.row.cell.sim[2:3,2:3]))))/sqrt(Sigma.cell.sim)
+P.values.cell.sim <- 2 - 2 * pt( abs(Zscores.cell.sim), df=n-d.cell.sim )
+q.cell.group.sim <- qvalue(P.values.cell.sim[,2])
+q.cell.sex.sim <- qvalue(P.values.cell.sim[,1])
+fsr.cell.group <- false.sign.results(B.sim[,2], B.est.cell.sim[,2], q.cell.group.sim$qvalue)
+plot(sort(q.cell.group.sim$qvalue), fsr.cell.group$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot with Only Eos and Tcells")
+
+
+cate.noCell.sim <- cate(~sexm + groupHutterite, X.data=data.sim, Y=t(Y.sim), r=r.nocell.sim, fa.method="ml", adj.method="rr", calibrate=F)
+Z.nocell.sim <- cate.noCell.sim$Z
+X.nocell.sim <- cbind(rep(1,n), data.sim$sexm, data.sim$groupHutterite, Z.nocell.sim)
+d.nocell.sim <- ncol(X.nocell.sim)
+beta.op.nocell.sim <- solve(t(X.nocell.sim) %*% X.nocell.sim) %*% t(X.nocell.sim)
+orthog.X.nocell.sim <- diag(n) - X.nocell.sim %*% solve(t(X.nocell.sim) %*% X.nocell.sim) %*% t(X.nocell.sim)
+B.est.nocell.sim <- Y.sim %*% t(beta.op.nocell.sim)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.nocell.sim <- 1/(n-d.nocell.sim) * rowSums( Y.sim * (Y.sim %*% orthog.X.nocell.sim) )
+Var.row.nocell.sim <- solve(t(X.nocell.sim) %*% X.nocell.sim)
+Zscores.nocell.sim <- (B.est.nocell.sim[,2:3] %*% diag(1/sqrt(diag(Var.row.nocell.sim[2:3,2:3]))))/sqrt(Sigma.nocell.sim)
+P.values.nocell.sim <- 2 - 2 * pt( abs(Zscores.nocell.sim), df=n-d.nocell.sim )
+q.nocell.group.sim <- qvalue(P.values.nocell.sim[,2])
+q.nocell.sex.sim <- qvalue(P.values.nocell.sim[,1])
+fsr.nocell.group <- false.sign.results(B.sim[,2], B.est.nocell.sim[,2], q.nocell.group.sim$qvalue)
+plot(sort(q.nocell.group.sim$qvalue), fsr.nocell.group$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot WITHOUT Cell Type for Group Status")
+
+cate.withCell.all.sim <- cate(~sexm + groupHutterite | T_cells + B_cells +  Eos + Neutro + Mono, X.data=data.sim, Y=t(Y.sim), r=r.cell.all.sim, fa.method="ml", adj.method="rr", calibrate=F)
+Z.cell.all.sim <- cate.withCell.all.sim$Z
+X.cell.all.sim <- cbind(rep(1,n), data.sim$sexm, data.sim$groupHutterite, data.sim$T_cells, data.sim$Eos, data.sim$Neutro, data.sim$B_cells, data.sim$Mono, Z.cell.all.sim)
+d.cell.all.sim <- ncol(X.cell.all.sim)
+beta.op.cell.all.sim <- solve(t(X.cell.all.sim) %*% X.cell.all.sim) %*% t(X.cell.all.sim)
+orthog.X.cell.all.sim <- diag(n) - X.cell.all.sim %*% solve(t(X.cell.all.sim) %*% X.cell.all.sim) %*% t(X.cell.all.sim)
+B.est.cell.all.sim <- Y.sim %*% t(beta.op.cell.all.sim)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.cell.all.sim <- 1/(n-d.cell.all.sim) * rowSums( Y.sim * (Y.sim %*% orthog.X.cell.all.sim) )
+Var.row.cell.all.sim <- solve(t(X.cell.all.sim) %*% X.cell.all.sim)
+Zscores.cell.all.sim <- (B.est.cell.all.sim[,2:3] %*% diag(1/sqrt(diag(Var.row.cell.all.sim[2:3,2:3]))))/sqrt(Sigma.cell.all.sim)
+P.values.cell.all.sim <- 2 - 2 * pt( abs(Zscores.cell.all.sim), df=n-d.cell.all.sim )
+q.cell.all.group.sim <- qvalue(P.values.cell.all.sim[,2])
+q.cell.all.sex.sim <- qvalue(P.values.cell.all.sim[,1])
+fsr.cell.all.group <- false.sign.results(B.sim[,2], B.est.cell.all.sim[,2], q.cell.all.group.sim$qvalue)
+plot(sort(q.cell.all.group.sim$qvalue), fsr.cell.all.group$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot with ALL Cell Types for Group Status")
+
+
+```
+
+
+## L sparse, B sparse
+
+Look at size of $L$
+```{r SizeofL, eval=F}
+B.oper <- t(Cov.all) %*% solve(Cov.all %*% t(Cov.all))
+B.est.tmp <- M %*% B.oper
+L.est.tmp <- B.est.tmp[,5:7]
+```
+
+
+Here I will position the zero $B$'s with the non-zero $L$'s. If $L$ is sparse, the estimated correlation $\Omega$ between $X$ and $C$ should be incorrect and we should find too many non-zero $B$'s.
+```{r SimRealData_AddL, eval=F}
+var.Tcells <- 5   #Index 1 in L
+var.Eos <- 5    #Index 3 in L
+pi0.Tcells <- 0.6    #Probability effect due to Tcells is 0
+pi0.Eos <- 0.6       #Probability effect due to Eosinophyl is 0
+
+L.add.sim <- cbind(sqrt(var.Tcells) * rnorm(p) * rbinom(p, 1, 1-pi0.Tcells), sqrt(var.Eos) * rnorm(p) * rbinom(p, 1, 1-pi0.Eos))
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.08
+Omega.sim[2,3] <- 0.04
+Omega.sim <- Omega.sim[1:2,1:3]
+mean.cell.sim <- Omega.sim %*% X.all[1:3,]
+C.sim <- matrix(0, nrow=2, ncol=n)
+for (i in 1:n) {
+  mean.i <- mean.cell.sim[,i]
+  C.sim[,i] <- rdirichlet(1, 10 * c(mean.i, 1-sum(mean.i)))[1:2]
+}
+C.sim <- C.all[c(1,3),]
+celleffect.add <- L.add.sim %*% C.sim
+
+M.sim.cell <- M + celleffect.add + B.sim %*% X.all[2:3,]
+
+conf.cell.sim <- est.confounder.num(~sexm + groupHutterite | T_cells + Eos, X.data=data.sim, Y=t(M.sim.cell), method="bcv", bcv.plot = T, rmax=10); r.cell.sim <- conf.cell.sim$r
+conf.nocell.sim <- est.confounder.num(~sexm + groupHutterite, X.data=data.sim, Y=t(M.sim.cell), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+
+cate.withCell.sim <- cate(~sexm + groupHutterite | T_cells + Eos, X.data=data.sim, Y=t(M.sim.cell), r=r.cell.sim, fa.method="ml", adj.method="rr", calibrate=F)
+Z.cell.sim <- cate.withCell.sim$Z
+X.cell.sim <- cbind(rep(1,n), data.sim$sexm, data.sim$groupHutterite, data.sim$T_cells, data.sim$Eos, Z.cell.sim)
+d.cell.sim <- ncol(X.cell.sim)
+beta.op.cell.sim <- solve(t(X.cell.sim) %*% X.cell.sim) %*% t(X.cell.sim)
+orthog.X.cell.sim <- diag(n) - X.cell.sim %*% solve(t(X.cell.sim) %*% X.cell.sim) %*% t(X.cell.sim)
+B.est.cell.sim <- M.sim.cell %*% t(beta.op.cell.sim)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.cell.sim <- 1/(n-d.cell.sim) * rowSums( M.sim.cell * (M.sim.cell %*% orthog.X.cell.sim) )
+Var.row.cell.sim <- solve(t(X.cell.sim) %*% X.cell.sim)
+Zscores.cell.sim <- (B.est.cell.sim[,2:3] %*% diag(1/sqrt(diag(Var.row.cell.sim[2:3,2:3]))))/sqrt(Sigma.cell.sim)
+P.values.cell.sim <- 2 - 2 * pt( abs(Zscores.cell.sim), df=n-d.cell.sim )
+q.cell.group.sim <- qvalue(P.values.cell.sim[,2])
+q.cell.sex.sim <- qvalue(P.values.cell.sim[,1])
+fsr.cell.group <- false.sign.results(B.sim[,2], B.est.cell.sim[,2], q.cell.group.sim$qvalue)
+plot(sort(q.cell.group.sim$qvalue), fsr.cell.group$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot with Only Eos and Tcells")
+
+
+cate.noCell.sim <- cate(~sexm + groupHutterite, X.data=data.sim, Y=t(M.sim.cell), r=r.nocell.sim, fa.method="ml", adj.method="rr", calibrate=F)
+Z.nocell.sim <- cate.noCell.sim$Z
+X.nocell.sim <- cbind(rep(1,n), data.sim$sexm, data.sim$groupHutterite, Z.nocell.sim)
+d.nocell.sim <- ncol(X.nocell.sim)
+beta.op.nocell.sim <- solve(t(X.nocell.sim) %*% X.nocell.sim) %*% t(X.nocell.sim)
+orthog.X.nocell.sim <- diag(n) - X.nocell.sim %*% solve(t(X.nocell.sim) %*% X.nocell.sim) %*% t(X.nocell.sim)
+B.est.nocell.sim <- M.sim.cell %*% t(beta.op.nocell.sim)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.nocell.sim <- 1/(n-d.nocell.sim) * rowSums( M.sim.cell * (M.sim.cell %*% orthog.X.nocell.sim) )
+Var.row.nocell.sim <- solve(t(X.nocell.sim) %*% X.nocell.sim)
+Zscores.nocell.sim <- (B.est.nocell.sim[,2:3] %*% diag(1/sqrt(diag(Var.row.nocell.sim[2:3,2:3]))))/sqrt(Sigma.nocell.sim)
+P.values.nocell.sim <- 2 - 2 * pt( abs(Zscores.nocell.sim), df=n-d.nocell.sim )
+q.nocell.group.sim <- qvalue(P.values.nocell.sim[,2])
+q.nocell.sex.sim <- qvalue(P.values.nocell.sim[,1])
+fsr.nocell.group <- false.sign.results(B.sim[,2], B.est.nocell.sim[,2], q.nocell.group.sim$qvalue)
+plot(sort(q.nocell.group.sim$qvalue), fsr.nocell.group$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot WITHOUT Cell Type for Group Status")
+
+
+plot(fsr.cell.group$fdr, fsr.cell.group$power, type="l", xlim=c(0,0.4), main="True FDR VS. Power To Estimate Effects"); lines(fsr.nocell.group$fdr, fsr.nocell.group$power, col="red")
+legend("bottomright", legend=c("Cell Type Observed", "Cell Type Unobserved"), fill=c("black", "red"))
+```
+We see that we have more power to detect effects at a given false disocery proportion. This is due to the SPARSITY pattern in $L$.
+
+
+Here I assume that $L$ and $B$ are both sparse. The placement of the 0's is independent in both $L$ and $B$. $LC$ has standardized effect size $(0.33, 0.18, 0.94)$
+```{r SimSynthData_SparseLSparseB_Ind}
+set.seed(1988)
+n.sim <- 200   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.8, d.sim)    #Sparsity in B
+pi0.L.sim <- rep(0.8, K.sim)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- 1/var.cell - 1
+sigma.L.sim <- sqrt(c(4, 5, 0.2))
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+cate.nocell.sim <- cate(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), r=8, fa.method="ml", adj.method="rr", calibrate=F)
+Z.nocell.sim <- cate.nocell.sim$Z
+X.nocell.sim <- cbind(rep(1,n.sim), data.sim$Cov1, data.sim$Cov2, Z.nocell.sim)
+d.nocell.sim <- ncol(X.nocell.sim)
+beta.op.nocell.sim <- solve(t(X.nocell.sim) %*% X.nocell.sim) %*% t(X.nocell.sim)
+orthog.X.nocell.sim <- diag(n.sim) - X.nocell.sim %*% solve(t(X.nocell.sim) %*% X.nocell.sim) %*% t(X.nocell.sim)
+B.est.nocell.sim <- M.sim %*% t(beta.op.nocell.sim)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.nocell.sim <- 1/(n.sim-d.nocell.sim) * rowSums( M.sim * (M.sim %*% orthog.X.nocell.sim) )
+Var.row.nocell.sim <- solve(t(X.nocell.sim) %*% X.nocell.sim)
+Zscores.nocell.sim <- (B.est.nocell.sim[,2:3] %*% diag(1/sqrt(diag(Var.row.nocell.sim[2:3,2:3]))))/sqrt(Sigma.nocell.sim)
+P.values.nocell.sim <- 2 - 2 * pt( abs(Zscores.nocell.sim), df=n.sim-d.nocell.sim )
+q.nocell.2.sim <- qvalue(P.values.nocell.sim[,2])
+q.nocell.1.sim <- qvalue(P.values.nocell.sim[,1])
+fsr.nocell.2 <- false.sign.results(B.sim[,2], B.est.nocell.sim[,3], q.nocell.2.sim$qvalue)
+#plot(sort(q.nocell.2.sim$qvalue), fsr.nocell.2$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot WITHOUT Cell Type for Cov2")
+#plot(fsr.nocell.2$fdr, fsr.nocell.2$power, type="l")
+
+
+#With cell type info#
+#conf.cell.sim <- est.confounder.num(~Cov1 + Cov2 | Tcells + Neutro + Eos, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.cell.sim <- conf.cell.sim$r
+cate.cell.sim <- cate(~Cov1 + Cov2 | Tcells + Neutro + Eos, X.data=data.sim, Y=t(M.sim), r=r.sim, fa.method="ml", adj.method="rr", calibrate=F)
+Z.cell.sim <- cate.cell.sim$Z
+X.cell.sim <- cbind(rep(1,n.sim), data.sim$Cov1, data.sim$Cov2, data.sim$Tcells, data.sim$Neutro, data.sim$Eos, Z.cell.sim)
+d.cell.sim <- ncol(X.cell.sim)
+beta.op.cell.sim <- solve(t(X.cell.sim) %*% X.cell.sim) %*% t(X.cell.sim)
+orthog.X.cell.sim <- diag(n.sim) - X.cell.sim %*% solve(t(X.cell.sim) %*% X.cell.sim) %*% t(X.cell.sim)
+B.est.cell.sim <- M.sim %*% t(beta.op.cell.sim)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.cell.sim <- 1/(n.sim-d.cell.sim) * rowSums( M.sim * (M.sim %*% orthog.X.cell.sim) )
+Var.row.cell.sim <- solve(t(X.cell.sim) %*% X.cell.sim)
+Zscores.cell.sim <- (B.est.cell.sim[,2:3] %*% diag(1/sqrt(diag(Var.row.cell.sim[2:3,2:3]))))/sqrt(Sigma.cell.sim)
+P.values.cell.sim <- 2 - 2 * pt( abs(Zscores.cell.sim), df=n.sim-d.cell.sim )
+q.cell.2.sim <- qvalue(P.values.cell.sim[,2])
+q.cell.1.sim <- qvalue(P.values.cell.sim[,1])
+fsr.cell.2 <- false.sign.results(B.sim[,2], B.est.cell.sim[,3], q.cell.2.sim$qvalue)
+#plot(sort(q.cell.2.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot WITHOUT Cell Type for Cov2")
+#plot(fsr.cell.2$fdr, fsr.cell.2$power, type="l")
+
+##Summarize Results
+plot(sort(q.cell.2.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", main=paste0("FDR Plot With and Without Cell Type, sigma.L = ", paste(as.character(round(100*sigma.L.sim)/100), collapse=",")), type="l")
+lines(sort(q.nocell.2.sim$qvalue), fsr.nocell.2$fdr, col="red")
+legend("bottomright", legend=c("With Cell", "Without Cell"), fill=c("black", "red"))
+abline(a=0,b=1, col="violet")
+```
+We see that we confidently identify many incorrect CpG sites, because CATE cannot identify the informative CpG sites, and therefore underestimates the correlation with robust regression.
+
+Here I assume $L$ and $B$ are sparse, but the non-zero's in Tcells are in the same place as the non-zeros for $B[\text{non-zero},2]$.
+```{r SimSynthData_SparseLSparseB_Dep, echo=F, eval=F}
+set.seed(1988)
+n.sim <- 200   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.8, d.sim)    #Sparsity in B
+pi0.L.sim <- rep(0.8, K.sim)    #Sparsity in L
+LB.ind <- 0     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- 1/var.cell - 10
+sigma.L.sim <- sqrt(c(4, 5, 0.2))
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+cate.nocell.sim <- cate(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), r=r.nocell.sim, fa.method="ml", adj.method="rr", calibrate=F)
+Z.nocell.sim <- cate.nocell.sim$Z
+X.nocell.sim <- cbind(rep(1,n.sim), data.sim$Cov1, data.sim$Cov2, Z.nocell.sim)
+d.nocell.sim <- ncol(X.nocell.sim)
+beta.op.nocell.sim <- solve(t(X.nocell.sim) %*% X.nocell.sim) %*% t(X.nocell.sim)
+orthog.X.nocell.sim <- diag(n.sim) - X.nocell.sim %*% solve(t(X.nocell.sim) %*% X.nocell.sim) %*% t(X.nocell.sim)
+B.est.nocell.sim <- M.sim %*% t(beta.op.nocell.sim)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.nocell.sim <- 1/(n.sim-d.nocell.sim) * rowSums( M.sim * (M.sim %*% orthog.X.nocell.sim) )
+Var.row.nocell.sim <- solve(t(X.nocell.sim) %*% X.nocell.sim)
+Zscores.nocell.sim <- (B.est.nocell.sim[,2:3] %*% diag(1/sqrt(diag(Var.row.nocell.sim[2:3,2:3]))))/sqrt(Sigma.nocell.sim)
+P.values.nocell.sim <- 2 - 2 * pt( abs(Zscores.nocell.sim), df=n.sim-d.nocell.sim )
+q.nocell.2.sim <- qvalue(P.values.nocell.sim[,2])
+q.nocell.1.sim <- qvalue(P.values.nocell.sim[,1])
+fsr.nocell.2 <- false.sign.results(B.sim[,2], B.est.nocell.sim[,3], q.nocell.2.sim$qvalue)
+#plot(sort(q.nocell.2.sim$qvalue), fsr.nocell.2$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot WITHOUT Cell Type for Cov2")
+#plot(fsr.nocell.2$fdr, fsr.nocell.2$power, type="l")
+
+
+#With cell type info#
+#conf.cell.sim <- est.confounder.num(~Cov1 + Cov2 | Tcells + Neutro + Eos, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.cell.sim <- conf.cell.sim$r
+cate.cell.sim <- cate(~Cov1 + Cov2 | Tcells + Neutro + Eos, X.data=data.sim, Y=t(M.sim), r=r.sim, fa.method="ml", adj.method="rr", calibrate=F)
+Z.cell.sim <- cate.cell.sim$Z
+X.cell.sim <- cbind(rep(1,n.sim), data.sim$Cov1, data.sim$Cov2, data.sim$Tcells, data.sim$Neutro, data.sim$Eos, Z.cell.sim)
+d.cell.sim <- ncol(X.cell.sim)
+beta.op.cell.sim <- solve(t(X.cell.sim) %*% X.cell.sim) %*% t(X.cell.sim)
+orthog.X.cell.sim <- diag(n.sim) - X.cell.sim %*% solve(t(X.cell.sim) %*% X.cell.sim) %*% t(X.cell.sim)
+B.est.cell.sim <- M.sim %*% t(beta.op.cell.sim)    #These will give you the EXACT same beta's. I recommend using the estimated design matrix to calculate sigma^2 for each gene, since you will be able to account for the degrees of freedom used to calculate it
+Sigma.cell.sim <- 1/(n.sim-d.cell.sim) * rowSums( M.sim * (M.sim %*% orthog.X.cell.sim) )
+Var.row.cell.sim <- solve(t(X.cell.sim) %*% X.cell.sim)
+Zscores.cell.sim <- (B.est.cell.sim[,2:3] %*% diag(1/sqrt(diag(Var.row.cell.sim[2:3,2:3]))))/sqrt(Sigma.cell.sim)
+P.values.cell.sim <- 2 - 2 * pt( abs(Zscores.cell.sim), df=n.sim-d.cell.sim )
+q.cell.2.sim <- qvalue(P.values.cell.sim[,2])
+q.cell.1.sim <- qvalue(P.values.cell.sim[,1])
+fsr.cell.2 <- false.sign.results(B.sim[,2], B.est.cell.sim[,3], q.cell.2.sim$qvalue)
+#plot(sort(q.cell.2.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot WITHOUT Cell Type for Cov2")
+#plot(fsr.cell.2$fdr, fsr.cell.2$power, type="l")
+
+##Summarize Results
+plot(sort(q.cell.2.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", main="FDR Plot With and Without Cell Type", type="l")
+lines(sort(q.nocell.2.sim$qvalue), fsr.nocell.2$fdr, col="red")
+legend("bottomright", legend=c("With Cell", "Without Cell"), fill=c("black", "red"))
+
+#Plot B[,2]#
+plot(B.sim[,2], B.est.nocell.sim[,3], xlab="True B", ylab="Estimated B", main="Comparison of Estimated B with and Without Cell Type", col="red")
+points(B.sim[,2], B.est.cell.sim[,3], col="black")
+
+
+```
+We see that we confidently identify many incorrect CpG sites, because CATE cannot identify the informative CpG sites, and therefore underestimates the correlation with robust regression.
+
+
+## SE for $L\Omega X = (1.0, 1.0, 1.0)$, $n = 200$.
+
+Here I assume that $L$ and $B$ are both sparse with $\pi_0 = 0.8$. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(1.0, 1.0, 1.0)$.
+```{r SimSynthData_SparseLSparseB_Ind_LargeL0, echo=F}
+set.seed(1988)
+n.sim <- 200   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.8, d.sim)    #Sparsity in B
+pi0.L.sim <- rep(0.8, K.sim)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- 1/var.cell - 1
+sigma.L.sim <- c(1, 1, 1) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+analyzed.data
+```
+
+
+## SE of $L\Omega X = (0.75, 0.75, 0.75)$, $n = 400$
+
+Here I assume that $L$ and $B$ are both sparse with $\pi_0 = 0.8$. The placement of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.75, 0.75, 0.75)$.
+```{r SimSynthData_SparseLSparseB_Ind_LargeL1, echo=F}
+set.seed(1988)
+n.sim <- 400   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.8, d.sim)    #Sparsity in B
+pi0.L.sim <- rep(0.8, K.sim)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- 1/var.cell - 1
+sigma.L.sim <- c(0.75, 0.75, 0.75) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+analyzed.data
+```
+
+## SE for $LC = (1.0, 1.0, 1.0)$, $n = 200$, $\alpha_{\text{cell}} = \frac{20}{2} = 10$.
+
+Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $LC$ is $(1.0, 1.0, 1.0)$. I also assume that the variability in cell type is larger
+```{r SimSynthData_SparseLSparseB_Ind_LargeL2, echo=F, eval=F}
+set.seed(1988)
+n.sim <- 200   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.8, d.sim)    #Sparsity in B
+pi0.L.sim <- rep(0.8, K.sim)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)/2
+sigma.L.sim <- c(1, 1, 1) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+analyzed.data
+```
+
+#### SE for $LC = (1.0, 0, 0)$, $n = 200$, $\pi_B = 0.9, \pi_L = 0.7$
+
+In this simulation, only TCells are non-zero (these are significantly confounded with $B_2$).
+```{r SimSynthData_SparseLSparseB_Ind_LargeL3, echo=F, eval=F}
+set.seed(1988)
+n.sim <- 200   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.9, d.sim)    #Sparsity in B
+pi0.L.sim <- c(0.7, 1,1)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+analyzed.data
+```
+
+
+## SE for $LC = (1.0, 1.0, 1.0)$, $n = 800$
+
+Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $LC$ is $(1.0, 1.0, 1.0)$. I also assume that the variability in cell type is larger
+```{r SimSynthData_SparseLSparseB_Ind_LargeL4, echo=F, eval=F}
+set.seed(1988)
+n.sim <- 800   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.8, d.sim)    #Sparsity in B
+pi0.L.sim <- rep(0.8, K.sim)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+analyzed.data
+```
+
+## SE for $LC = (0.5, 0.5, 0.5)$, $n = 400$, $\pi_L = 0.7$, $\pi_B = 1$.
+
+Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $LC$ is $(0.75, 0.75, 0.75)$.
+```{r SimSynthData_SparseLSparseB_Ind_LargeL5, echo=F}
+set.seed(1988)
+n.sim <- 400   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(1, d.sim)    #Sparsity in B
+pi0.L.sim <- rep(0.7, K.sim)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(0.75, 0.75, 0.75) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+analyzed.data
+```
+
+
+## SE for $LC = BX = (1.0, 1.0, 1.0)$, $n = 800$, $\pi_L = 0.8$, $\pi_B = 0.95$.
+
+Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $LC$ is $(1.0, 1.0, 1.0)$.
+```{r SimSynthData_SparseLSparseB_Ind_LargeL6, echo=F, eval=F}
+set.seed(1988)
+n.sim <- 800   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- rep(0.8, K.sim)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(sqrt(mu.sigma.sim), d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+analyzed.data
+```
+
+
+
+## SE for $LC = (1.0, 1.0, 1.0)$, $n = 800$, $\pi_L = 0.8$, $\pi_B = 0.95$.
+
+Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $LC$ is $(1.0, 1.0, 1.0)$.
+```{r SimSynthData_SparseLSparseB_Ind_LargeL7, echo=F, eval=F}
+set.seed(1988)
+n.sim <- 800   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- rep(0.8, K.sim)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+```
+
+
+## SE for $LC = (1.0, 0, 0)$, $n = 400$, $\pi_L = 0.8$, $\pi_B = 0.95$.
+
+Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $LC$ is $(1.0, 0, 0)$.
+```{r SimSynthData_SparseLSparseB_Ind_LargeL8, echo=F, eval=F}
+set.seed(1988)
+n.sim <- 400   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(0.8, 1, 1)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(0.25, 0.25, 0.25) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="bcv", bcv.plot = T, rmax=7); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
+```
+
+
+Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(1.0, 0, 0)$.
+```{r SimSynthData_SparseLSparseB_Ind_LargeL9, echo=F, eval=T}
+set.seed(1988)
+n.sim <- 100   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(0, 1, 1)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1.0, 1.0, 1.0) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="ed", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
+```
+We don't see much of a difference when having cell type in cases when there is only one sparse confounder.
+
+## n = 100, SE for $L\Omega X$ is 0.75, $\pi_{0_L} = 0.8$ and $\pi_B = 0.95$
+
+Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.75, 0.75, 0.75)$.
+```{r SimSynthData_SparseLSparseB_Ind_LargeL10, echo=F, eval=T}
+set.seed(1988)
+n.sim <- 100   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(0.8, 0.8, 0.8)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(0.75, 0.75, 0.75) / c(Omega.sim[1:2,3], Omega.sim[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="ed", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+```
+
+
+## n = 100, SE for $L\Omega X$ is 0.75, $\pi_{0_L} = 0.8$ and $\pi_B = 0.95$
+
+Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.75, 0.75, 0.75)$.
+```{r SimSynthData_SparseLSparseB_Ind_LargeL11, echo=F, eval=T}
+set.seed(1988)
+n.sim <- 100   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.90, d.sim)    #Sparsity in B
+pi0.L.sim <- c(0.9, 1, 1)    #Sparsity in L
+LB.ind <- 0     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(0.5, 0.5, 0.5) / c(Omega.sim[1:2,3], Omega.sim[3,1]) * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="ed", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
+```
+
+## n = 100, $\pi_{0_{\text{Neutro}}} = 0.7$, Rest 0
+
+Here I assume $B$ is both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.5, 0.5, 0.5)$. Something is happening with neutrophils...DO NOT CHANGE THIS CODE!!!
+```{r SimSynthData_SparseLSparseB_Ind_LargeL12, echo=F, eval=T}
+set.seed(1988)
+n.sim <- 100   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(1, 1, 0.7)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="ed", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
+se.tcells <- sigma.L.sim[3] / sqrt(0.15) * Omega.sim[1,3]
+se.eos <- sigma.L.sim[3] / sqrt(0.15) * Omega.sim[2,3]
+```
+Something significant appears to be happening with Neutrophils. I will test this below.
+1.) If I increase the effect size for Neutrophils, CATE does well.
+2.) It has nothing to do with the size of the other confounders that are uncorrelated with $X$.
+3.) If I reduce the residual variance of my residuals while keeping the confounders constant, CATE does VERY poorly. If I reduct both to almost 0, I see the same effect had I not changed anything. I can therefore conclude that this is not a problem with sample size.
+4.) If I keep the Eos standardized effect size to 0.19, drastically reduce the residual variance, and decrease the standardize effect size of $B$ to 1/2 that of $L \Omega$, 
+5.) When I update Tcells to the appropriate effect size (standardized effect for $L\Omega X = 0.19$), I see a slightly smaller effect. When I do the same for Eos, I see NO effect. If I decrease $\alpha_{\text{cell}}$ so that Eosinophils have the same variance as Neutrophils had, I also see no effect.
+6.) When I increase the Eos effect from 0.02 in Amish to 0.12 in Hutterites while keeping the effect size constant at around 0.19, CATE doe VERY poorly. The Hutterites have a 5-fold increase in the variance of cell type effect, indicating that the change in variance, along with $B$ having a larger effect size (I don't see much change when the main effect and cell type are roughly the same. I do see it when $B$ is roughly twice the effect size due to cell type).
+7.) When more than one effect is non-zero but sparse ($\pi_0 = 0.7$), I see an even LARGER effect.
+
+
+
+## n = 100, $\pi_{0_{\text{Neutro}}} = 0.7$, Rest 0
+
+Here I assume $B$ is both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.5, 0.5, 0.5)$. Something is happening with neutrophils...
+```{r SimSynthData_SparseLSparseB_Ind_LargeL12, echo=F, eval=T}
+set.seed(1988)
+n.sim <- 100   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(1, 1, 0.7)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.10
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+#alpha.cell.sim <- (alpha.cell.sim) * Omega.sim[2,1] * (1 - Omega.sim[2,1]) / Omega.sim[3,1] / (1 - Omega.sim[3,1]) - 1
+sigma.L.sim <- c(0.19, 0.19, 1) / c(Omega.sim[1:2,3], Omega.QL[3,1]) * sqrt(0.15)
+#sigma.L.sim <- c(0.19, 0.19, 0.19)
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="ed", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
+```
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

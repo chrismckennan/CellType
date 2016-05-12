@@ -30,6 +30,8 @@ library('corpcor')
 library('sva')
 library('knitr')
 library('printr')
+library('gtools')
+library('leapp')
 ```
 
 
@@ -194,9 +196,7 @@ Load Michele's data
 #Load SWAN-normalized data
 #Variables are Mset.swan.norm and rgset
 load(file="/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/MyWork/SavedObjects/Rfile.RData")
-meth.norm <- getMeth(Mset.swan.norm)
-unmeth.norm <- getUnmeth(Mset.swan.norm)
-beta.values <- meth.norm/(meth.norm+unmeth.norm+100)  #These are ordered by row in data.cov
+beta.values <- getBeta(Mset.swan.norm)  #These are ordered by row in data.cov
 ```
 
 Identify columns of the data that correspond to the data that I have in data.LPS (i.e. cell type data) and perform a regression
@@ -206,6 +206,7 @@ col.use <- match(ind.ids.cell, ind.ids.covar)
 beta.cell <- beta.values[,col.use]
 M.cell <- log(beta.cell/(1-beta.cell))
 model.mat <- model.matrix(~Tcell.act + Bcell.act + Eos.act + Neut.act + Mono.act, data=data.LPS)
+model.mat[,2:ncol(model.mat)] <- model.mat[,2:ncol(model.mat)]/100
 beta.op <- solve(t(model.mat) %*% model.mat, t(model.mat))
 H <- model.mat %*% beta.op
 H.perp <- diag(1,ncol(H)) - H
@@ -312,6 +313,7 @@ Below, I will estimate $L$ and $\sigma_g^2$ from Michelle's data and use those e
 ```{r Determine L and Variance}
 m <- nrow(M.cell)
 X.L <- model.matrix(~Tcell.act + Eos.act + Neut.act + Mono.act + asthma + sex + as.numeric(Age > age.cutoff), data=data.LPS)
+X.L[,2:5] <- X.L[,2:5]/100
 beta.op.L <- solve(t(X.L) %*% X.L, t(X.L))
 H.L <- X.L %*% solve(t(X.L) %*% X.L, t(X.L))
 perp.L <- diag(n) - H.L
@@ -747,75 +749,107 @@ Therefore,
 
 ## Simulate Data
 
-Fix $\Omega$, $X_1$, $X_2$, $C_1$, $B$, $L$, $\Sigma$. To make things simple I assume there is only a single covariate of interest (a binary 1 or 0) and 4 cell types.
+Fix $\Omega$, $X_1$, $X_2$, $C_1$, $B$, $L$, $\Sigma$. To make things simple I assume there is only a single covariate of interest (a binary 1 or 0) and 4 cell types. The EM estimator seems to work for a single covariate (i.e. the mean). Let's try another one...
 
-```{r Initialize}
-n.1 <- 60     #Number of individuals with known cell type
+```{r Initialize1}
+pi.B <- 0.3    #Probability B is non-zero
+pi.L <- 1      #Probability L is non-zero
+n.1 <- 100     #Number of individuals with known cell type
 n.2 <- 400    #Number of individuals with unmeasured cell type
-p <- 100      #Number of methylation sites
+p <- 1000      #Number of methylation sites
 var.g <- 0.75^2    #Diagonal elements of Sigma. Sigma is assumed to be diagonal
 var.cell <- 0.15^2    #Precision of cell measurement
 
 X.1 <- rbind(rep(1,n.1), c(rep(1,n.1/2), rep(0,n.1/2)))   #A d x n.1 matrix
 orthog.X.1 <- diag(n.1) - t(X.1) %*% solve( X.1 %*% t(X.1), X.1 )
 X.2 <- rbind(rep(1,n.2), c(rep(1,n.2/2), rep(0,n.2/2)))   #A d x n.2 matrix
+orthog.X.2 <- diag(n.2) - t(X.2) %*% solve( X.2 %*% t(X.2), X.2 )
 d <- nrow(X.1)
+
+#X.1 <- rbind(rep(1,n.1))   #A d x n.1 matrix
+#orthog.X.1 <- diag(n.1) - t(X.1) %*% solve( X.1 %*% t(X.1), X.1 )
+#X.2 <- rbind(rep(1,n.2))   #A d x n.2 matrix
+#orthog.X.2 <- diag(n.2) - t(X.2) %*% solve( X.2 %*% t(X.2), X.2 )
+#d <- nrow(X.1)
+
+##Compute QR for X.1', X.2'##
+qr.1 <- qr(t(X.1))
+qr.2 <- qr(t(X.2))
+R.1 <- qr.R(qr.1)
+Q1.1 <- qr.Q(qr.1)
+Q2.1 <- svd(orthog.X.1)$u[,1:(n.1-d)]
+Q.1 <- cbind(Q1.1, Q2.1)
+R.2 <- qr.R(qr.2)
+Q1.2 <- qr.Q(qr.2)
+Q2.2 <- svd(orthog.X.2)$u[,1:(n.2-d)]
+Q.2 <- cbind(Q1.2, Q2.2)
+
+X.R <- rbind(R.1, R.2)
 
 ###Simulate cell type proportions###
 
-Omega.sim = Omega[1:2,1:3]; Omega.sim[2,1] = 0.09
+Omega.sim = Omega[1:2,1:3]; Omega.sim[2,2] = 0.04
+#Omega.sim = rbind(Omega[1:1,1:3])
 XO.1 <- t(X.1) %*% Omega.sim
 XO.2 <- t(X.2) %*% Omega.sim
 K <- ncol(Omega.sim)
-C.1 <-  array(NA, dim=c(n.1, K))    #A n.1 x K matrix of individual 1's cell types (we condition on this)
+C.1 <-  array(NA, dim=c(K, n.1))    #A n.1 x K matrix of individual 1's cell types (we condition on this)
 for (i in 1:n.1) {
   alpha.i <- c(1/var.cell * XO.1[i,], 1/var.cell * (1 - sum(XO.1[i,])))
-  C.1[i,] <- rdirichlet(1, alpha.i)[1:K]
+  C.1[,i] <- rdirichlet(1, alpha.i)[1:K]
 }
-U.C1 <- svd(C.1)$u
+C.1.tilde <- C.1 %*% Q.1
+C1.1.tilde <- C.1.tilde[,1:d]    #K x d matrix
+C2.1.tilde <- C.1.tilde[,(d+1):n.1]   #K x (n.1 - d) matrix
+F.mat <- C2.1.tilde    #To be used in EM approximation
+
+U.C1 <- svd(t(C.1))$u
 tmp.mat <- cbind(U.C1, diag(n.1))
 tmp.Q <- qr.Q(qr(tmp.mat))
-V.C.1t <- tmp.Q[, (K+1):n.1]    #C.1' V.C.1t = 0, V.C.1t is n.1 x n.1-K and orthonormal
+V.C.1 <- tmp.Q[, (K+1):n.1]    #C.1 V.C.1t = 0, V.C.1 is n.1 x n.1-K and orthonormal
 
-Cov.1 <- cbind(t(X.1), C.1)
+Cov.1 <- cbind(t(X.1), t(C.1))
 H.1 <- Cov.1 %*% solve( t(Cov.1) %*% Cov.1, t(Cov.1) )
 perp.1 <- diag(n.1) - H.1
+X.tilde <- cbind(X.1 %*% V.C.1, X.2)
 
 ###Simulate L and B###
 
-var.l <- 1/C.1[n.1,]^2      #L_gi ~ N(0, var.l(i))
-var.beta <- rep(1, d)       #B_gi ~ N(0, var.beta(i))
+var.l <- 1/C.1[,n.1]^2*(1 - 0.8)/0.8      #L_gi ~ N(0, var.l(i))
+var.beta <- 2*rep(1, d)       #B_gi ~ N(0, var.beta(i))
 L <- array(NA, dim=c(p,K))
 B <- array(NA, dim=c(p,d))
-prior.B <- 0.5     #B.asthma ~ prior.B*delta_0 + (1-prior.B)*N(0,var.beta[j])
 for (k in 1:K) {
-  L[,k] <- sqrt(var.l[k]) * rnorm(p)
+  L[,k] <- rbinom(p, 1, pi.L) * sqrt(var.l[k]) * rnorm(p)
 }
 B[,1] <- sqrt(var.beta[1]) * rnorm(p)
 for (j in 2:d) {
-  B[,j] <- rbinom(p, 1, 1 - prior.B) * sqrt(var.beta[j]) * rnorm(p)
+  B[,j] <- rbinom(p, 1, pi.B) * sqrt(var.beta[j]) * rnorm(p)
 }
 ```
 
 ## Estimate $Omega$
 For now I ONLY use the normal approximation estimator $\hat{\Omega}$. This will UNDERESTIMATE the cell type variance, so I may move use a different estimator, like a quasi-likelihood estimate (note that this is convex) or a dirichlet regression, which is definitely non-convex.
 
-```{r EstimateOmega}
-ML.norm <- MaxLike.NewtonLS(t(X.1), C.1, Omega.sim, var.cell, 1e-8, vfixed=F)
+```{r EstimateOmega1}
+ML.norm <- MaxLike.NewtonLS(t(X.1), t(C.1), Omega.sim, var.cell, 1e-8, vfixed=F)
 Omega.norm <- ML.norm$Omega   #A d x K matrix
 sigma.cell.norm <- sqrt(ML.norm$v)  #I am UNDERESTIMATING the variance here if C is in fact Dirichlet. I may need to write my own solver for dirichlet Likelihood...
 var.Omega <- solve(ML.norm$I)[1:(d*K),1:(d*K)]   #Covariance of Omega.hat (posterior variance of the mean). It is var((w.1,...,w.K))
 var.Omega.full <- solve(ML.norm$I)
 XO.norm.2 <- t(X.2) %*% Omega.norm    #A n.2 x K matrix of predicted mean cell types for the second set of individuals
-Cov.predict <- rbind( cbind( t(X.1), C.1 ), cbind( t(X.2), XO.norm.2 ) )
+Cov.predict <- rbind( cbind( t(X.1), t(C.1) ), cbind( t(X.2), XO.norm.2 ) )
 Cov.predict.2 <- cbind( t(X.2), XO.norm.2 )
-perp.2 <- diag(n.2) - Cov.predict.2 %*% solve(t(Cov.predict.2) %*% Cov.predict.2, t(Cov.predict.2))
+
+A.est1 <- -t(X.2) %*% Omega.norm %*% solve( C.1 %*% orthog.X.1 %*% t(C.1), C.1) %*% orthog.X.1 %*% V.C.1
+B.0 <- t(X.2) %*% Omega.norm %*% solve( C.1 %*% orthog.X.1 %*% t(C.1), t(Omega.norm) %*% X.2)
 ```
 
 Create variance matrix $V \in \mathbb{R}^{Kn_2 \times Kn_2}$ where $G = I_{n_2} \otimes \ell_g^T V I_{n_2} \otimes \ell_g + \sigma^2 I_{n_2}$.
 
-```{r CreateV}
-V <- array(NA, dim=c(n.2*K, n.2*K))
+```{r CreateV1}
+V <- array(0, dim=c(n.2*K, n.2*K))
+Sigma.hat <- array(0, dim=c(K,K))
 for (i in 1:n.2) {
   x.i <- cbind(X.2[,i])
   kron.xi <- kronecker(diag(K), t(x.i))
@@ -830,69 +864,666 @@ for (i in 1:n.2) {
   a.i <- cbind(tmp.S.i[K+1,1:K])
   V.i <- sigma.cell.norm^2 * ( diag(as.vector(p.i)) - S.i.tilde - p.i %*% t(p.i) ) + diag(as.vector(a.i)) - (p.i %*% t(a.i) + a.i %*% t(p.i))  #ith block is V.i + S.i
   V[((i-1)*K+1):(i*K),((i-1)*K+1):(i*K)] <- V.i + S.i
+  Sigma.hat <- 1/n.2 * sigma.cell.norm^2 * ( diag(as.vector(p.i)) - p.i %*% t(p.i) ) + Sigma.hat
   
   if (i == n.2) {
     next
   }
   
-  for (j in (i+1):n.2) {
-    x.j <- cbind(X.2[,j])
-    kron.xj <- kronecker(diag(K), t(x.j))
-    S.ij <- kron.xi %*% var.Omega %*% t(kron.xj)
-    V[((i-1)*K+1):(i*K), ((j-1)*K+1):(j*K)] = S.ij
-    V[((j-1)*K+1):(j*K), ((i-1)*K+1):(i*K)] = t(S.ij)
-  }
+ # for (j in (i+1):n.2) {
+  #  x.j <- cbind(X.2[,j])
+   # kron.xj <- kronecker(diag(K), t(x.j))
+  #  S.ij <- kron.xi %*% var.Omega %*% t(kron.xj)
+  #  V[((i-1)*K+1):(i*K), ((j-1)*K+1):(j*K)] = S.ij
+  #  V[((j-1)*K+1):(j*K), ((i-1)*K+1):(i*K)] = t(S.ij)
+  #}
 }
+S <- t(chol(Sigma.hat))     #SS' = Sigma.hat
+#S <- t( chol(var.cell * (diag(as.vector(Omega.sim)) - t(Omega.sim) %*% Omega.sim)) )
+F.mat.tilde <- solve(S, F.mat)
+SFF.tilde <- F.mat.tilde %*% t(F.mat.tilde)
 ```
 
 ## Simulate Data
 Simulate and analyze data with the two estimators above
 
-```{r SimulateData}
+```{r SimulateData1}
 n.iter <- 1    #Number of data sets to simulate
+r.confound <- 10    #Additional confounders. The loadings are N(0,1) and mixings are N(0,1)
+beta1.mat <- array(0, dim=c(n.iter, p))    #Estimator 1; rows are iteration, columns are sites g = 1,...,p
+beta2.mat <- array(0, dim=c(n.iter, p))    #GEE Estimator 2
+beta3.mat <- array(0, dim=c(n.iter, p))    #Normal Approximation Estimator 3
+var.naive <- var.g * solve( t(Cov.1) %*% Cov.1 )
 for (i in 1:n.iter) {
   ##Simulate Y.1, Y.2 conditional on C.1, X.1, X.2
-  Y.1 <- B %*% X.1 + L %*% t(C.1) + sqrt(var.g) * matrix(rnorm(n.1*p), nrow=p, ncol=n.1)
-  
-  C.2 <- array(NA, dim=c(n.2, K))   #A n.2 x K matrix of cell type proportions
+  #L.confound <- matrix(rnorm(p*r.confound), nrow=p, ncol=r.confound)
+ # W.1.confound <- matrix(rnorm(r.confound*n.1), nrow=r.confound, ncol=n.1)
+  #W.2.confound <- matrix(rnorm(r.confound*n.1), nrow=r.confound, ncol=n.2)
+  Y.1 <- B %*% X.1 + L %*% C.1 + sqrt(var.g) * matrix(rnorm(n.1*p), nrow=p, ncol=n.1)
+  Y.1.tilde <- Y.1 %*% Q.1
+  #svd.1 <- svd(Y.1 %*% ( diag(n.1) - Cov.1 %*% solve(t(Cov.1) %*% Cov.1, t(Cov.1)) ))
+  #L.confound.est <- svd.1$u[,1:10]
+  #W.1.est <- t(svd.1$v[,1:10])
+  Y1.1.tilde <- Y.1.tilde[,1:d]
+  Y2.1.tilde <- Y.1.tilde[,(d+1):n.1]
+  #W.2.est <-  
+  L.hat <- Y.1 %*% Cov.1 %*% solve(t(Cov.1) %*% Cov.1)
+  L.hat <- L.hat[,(d+1):(d+K)]
+    
+  C.2 <- array(NA, dim=c(K, n.2))   #A n.2 x K matrix of cell type proportions
   for (j in 1:n.2) {
     alpha.j <- 1/var.cell * c(XO.2[j,], 1-sum(XO.2[j,]))
-    C.2[j,] <- rdirichlet(1, alpha.j)[1:K]
+    C.2[,j] <- rdirichlet(1, alpha.j)[1:K]
   }
-  Y.2 <- B %*% X.2 + L %*% t(C.2) + sqrt(var.g) * matrix(rnorm(n.2*p), nrow=p, ncol=n.2)
+  Y.2 <- B %*% X.2 + L %*% C.2 + sqrt(var.g) * matrix(rnorm(n.2*p), nrow=p, ncol=n.2)
+  Y.2.tilde <- Y.2 %*% Q.2
+  Y1.2.tilde <- Y.2.tilde[,1:d]
+  Y2.2.tilde <- Y.2.tilde[,(d+1):n.2]
+  
+  ##Compute Sufficient Statistics##
+  SYY2.full <- Y2.2.tilde %*% t(Y2.2.tilde)
+  SYY1.full <- Y2.1.tilde %*% t(Y2.1.tilde)
+  SY1F.tilde.full <- Y2.1.tilde %*% t(F.mat.tilde)
+  Full.EM <-ExpMax.multL(L.hat, rep(var.g, p), n.1, n.2, d, SYY1.full, SYY2.full, SY1F.tilde.full, SFF.tilde, 1e-4)
+  var.EM <- Full.EM$Sigma
+  L.EM <- t( solve(t(S), t(Full.EM$L)) )
   
   #Pooling estimator for the variance#
-  s <- Compute.s(cbind(t(X.1), C.1), Y.1)
-  mu.var <- mean(s/(n.1-K-d))
-  v.var <- sd(s/(n.1-K-d))^2
-  alpha.0 <- mu.var^2/v.var + 2
-  beta.0 <- mu.var*(alpha.0 - 1)
-  ML.pooled <- ML.Gamma(c(alpha.0,beta.0), s, n.1-d-K, 1e-8)
-  alpha <- ML.pooled$alpha
-  gamma <- ML.pooled$gamma
+#  s <- Compute.s(cbind(t(X.1), C.1), Y.1)
+ # mu.var <- mean(s/(n.1-K-d))
+#  v.var <- sd(s/(n.1-K-d))^2
+#  alpha.0 <- mu.var^2/v.var + 2
+#  beta.0 <- mu.var*(alpha.0 - 1)
+#  ML.pooled <- ML.Gamma(c(alpha.0,beta.0), s, n.1-d-K, 1e-8)
+ # alpha <- ML.pooled$alpha
+  #gamma <- ML.pooled$gamma
   
   
   ##Estimate B using both of the above methods##
+ # beta2.vec <- rep(0,p)
+#  sd.beta2.vec <- rep(0,p)
+ # ratio2.var <- rep(0,p)
+  #ratio1.var <- rep(0,p)
   for (g in 1:p) {
-    y.1.g <- Y.1[g,]
-    y.2.g <- Y.2[g,]
-    var.OLS.g <- 1/(n.1 - K - d) * sum( y.1.g*as.vector(perp.1 %*% y.1.g) )   #OLS estimate for sigma_g^2
-    var.pooled.g <- (gamma + s[g]/2)/(alpha + n.1/2 - 1)      #Pooled estimate based on an IG prior with parameters estimated using empirical Bayes
+    #y.1.g <- Y.1[g,]
+    #y.2.g <- Y.2[g,]
+    #var.OLS.g <- 1/(n.1 - K - d) * sum( y.1.g*as.vector(perp.1 %*% y.1.g) )   #OLS estimate for sigma_g^2
+    #var.pooled.g <- (gamma + s[g]/2)/(alpha + n.1/2 - 1)      #Pooled estimate based on an IG prior with parameters estimated using empirical Bayes
     
     #Method 1#
-    l.g.hat <- solve( t(C.1) %*% orthog.X.1 %*% C.1, t(C.1) ) %*% orthog.X.1 %*% y.1.g
-    beta.list <- Estimator.1(var.hat.g, C.1, V.C.1t, orthog.X.1, X.2, Omega.norm, V, l.g.hat, y.1.g, y.2.g)
+    #z.1.g <- t(V.C.1) %*% y.1.g
+    #z.2.g <- y.2.g - t(X.2) %*% Omega.norm %*% L.hat[g,]
+    #Est.1.g <- Estimator.1(var.g, A.est1, B.0, X.tilde, V, L.hat[g,], z.1.g, z.2.g)
+    #beta1.mat[i,g] <- Est.1.g$beta[2,1]
     
     #Method 2#
-    theta.0.g <- solve(t(Cov.predict) %*% Cov.predict, t(Cov.predict)) %*% c(y.1.g, y.2.g)
-    Est.2.g <- Estimator.2(var.pooled.g, C.1, X.1, X.2, Omega.norm, V, y.1.g, y.2.g, theta.0.g, 1e-6)
-    beta.2.g <- Est.2.g$beta
-    l.2.g <- Est.2.g$l
-    Var.2 <- Est.2.g$var.theta
+    #theta.0.g <- solve(t(Cov.predict) %*% Cov.predict, t(Cov.predict)) %*% c(y.1.g, y.2.g)
+    #Est.2.g <- Estimator.2(var.g, C.1, X.1, X.2, t(Omega.sim), V, y.1.g, y.2.g, theta.0.g, 1e-6)
+    #beta.2.g <- Est.2.g$beta
+    #beta2.mat[i,g] <- beta.2.g[2]
+    #T.g <- Est.2.g$T
+    #T.naive.g <- Est.2.g$naive.T
+    
+    #beta2.vec[g] <- beta.2.g[2]
+    #sd.beta2.vec[g] <- sqrt(diag(solve(T.g)))[2]
+    #ratio2.var[g] <- solve(T.naive.g)[2,2]/solve(T.g)[2,2]
+    #ratio1.var[g] <- solve(T.naive.g)[2,2]/Est.1.g$Var[2,2]
+    
+    ##EM Estimate##
+    y2.1.g.tilde <- rbind(Y2.1.tilde[g,])
+    y2.2.g.tilde <- rbind(Y2.2.tilde[g,])
+    #SYY2 <- y2.2.g.tilde %*% t(y2.2.g.tilde)
+    #SYY1 <- y2.1.g.tilde %*% t(y2.1.g.tilde)
+    #SY1F.tilde <- y2.1.g.tilde %*% t(F.mat.tilde)
+    #L.0.g <- rbind(L[g,]) %*% S
+    #Sigma.0.g <- var.g
+    #EM.g <- ExpMax(L.0.g, Sigma.0.g, n.1, n.2, d, SYY1, SYY2, SY1F.tilde, SFF.tilde, 1e-6)
+    #l.em.g <- solve(t(S), t(EM.g$L))
+    #var.em.g <- EM.g$Sigma
+    l.em.g <- L.EM[g,]
+    
+    
+    y.total.g <- c(Y1.1.tilde[g,] - t(C1.1.tilde) %*% l.em.g, Y1.2.tilde[g,] - R.2 %*% Omega.norm %*% l.em.g)
+    var.g.g <- var.EM[g]
+    U.g.1 <- 1/var.g.g*diag(d) + t(C1.1.tilde) %*% solve( 1/var.g.g * F.mat %*% t(F.mat) + (n.2 - d) * Sigma.hat %*% l.em.g %*% t(l.em.g) %*% Sigma.hat / (as.numeric(var.g.g + t(l.em.g) %*% Sigma.hat %*% l.em.g)) ) %*% C1.1.tilde
+    U.g.2 <- diag( rep(var.g.g + t(l.em.g) %*% Sigma.hat %*% l.em.g, d) ) + R.2 %*% Omega.norm %*% solve( 1/var.g.g * F.mat %*% t(F.mat) + (n.2 - d) * Sigma.hat %*% l.em.g %*% t(l.em.g) %*% Sigma.hat / (as.numeric(var.g.g + t(l.em.g) %*% Sigma.hat %*% l.em.g)) ) %*% t(R.2 %*% Omega.norm)
+    U.g <- rbind( cbind( U.g.1, matrix(0,nrow=d,ncol=d) ), cbind( matrix(0,nrow=d,ncol=d), U.g.2 ) )
+    beta.3.g <- solve(t(X.R) %*% solve(U.g, X.R), t(X.R) %*% solve(U.g, y.total.g))
+    beta3.mat[i,g] <- beta.3.g[2]
+  }
+
+  if (i == 1) {
+    leapp.out <- leapp(data=Y.2, pred.prim=cbind(X.2[2,]), pred.covar=cbind(X.2[1,]))
+    plot(B[,2], leapp.out$gamma/10, main="Comparing LEAPP(black), My Method(red), Naive Estimate (blue)", xlab="True B", ylab="Estimated B")
+    points(B[,2], beta3.mat[1,], col="red")
+    
+    X.total <- rbind(t(X.1), t(X.2))
+    B.naive <- cbind(Y.1, Y.2) %*% X.total %*% solve(t(X.total)%*%X.total)
+    points(B[,2], B.naive[,2], col="blue")
   }
   
 }
 ```
+
+It appears that for these simulation parameters, robust regression outperforms my method. This may be because the effect due to B is large. Let's make this smaller below:
+
+##Simulate Data with Different Hyperparameters (make the effect of B small)
+In these simulations, the effect $B = \sigma_g/4$. In the above simulations, the size $B$ is large.
+
+```{r Initialize2}
+pi.B <- 0.3    #Probability B is non-zero
+pi.L <- 1      #Probability L is non-zero
+n.1 <- 100     #Number of individuals with known cell type
+n.2 <- 400    #Number of individuals with unmeasured cell type
+p <- 1000      #Number of methylation sites
+var.g <- 0.75^2    #Diagonal elements of Sigma. Sigma is assumed to be diagonal
+var.cell <- 0.15^2    #Precision of cell measurement
+
+X.1 <- rbind(rep(1,n.1), c(rep(1,n.1/2), rep(0,n.1/2)))   #A d x n.1 matrix
+orthog.X.1 <- diag(n.1) - t(X.1) %*% solve( X.1 %*% t(X.1), X.1 )
+X.2 <- rbind(rep(1,n.2), c(rep(1,n.2/2), rep(0,n.2/2)))   #A d x n.2 matrix
+orthog.X.2 <- diag(n.2) - t(X.2) %*% solve( X.2 %*% t(X.2), X.2 )
+d <- nrow(X.1)
+
+#X.1 <- rbind(rep(1,n.1))   #A d x n.1 matrix
+#orthog.X.1 <- diag(n.1) - t(X.1) %*% solve( X.1 %*% t(X.1), X.1 )
+#X.2 <- rbind(rep(1,n.2))   #A d x n.2 matrix
+#orthog.X.2 <- diag(n.2) - t(X.2) %*% solve( X.2 %*% t(X.2), X.2 )
+#d <- nrow(X.1)
+
+##Compute QR for X.1', X.2'##
+qr.1 <- qr(t(X.1))
+qr.2 <- qr(t(X.2))
+R.1 <- qr.R(qr.1)
+Q1.1 <- qr.Q(qr.1)
+Q2.1 <- svd(orthog.X.1)$u[,1:(n.1-d)]
+Q.1 <- cbind(Q1.1, Q2.1)
+R.2 <- qr.R(qr.2)
+Q1.2 <- qr.Q(qr.2)
+Q2.2 <- svd(orthog.X.2)$u[,1:(n.2-d)]
+Q.2 <- cbind(Q1.2, Q2.2)
+
+X.R <- rbind(R.1, R.2)
+
+###Simulate cell type proportions###
+
+Omega.sim = Omega[1:2,1:3]; Omega.sim[2,2] = 0.04
+#Omega.sim = rbind(Omega[1:1,1:3])
+XO.1 <- t(X.1) %*% Omega.sim
+XO.2 <- t(X.2) %*% Omega.sim
+K <- ncol(Omega.sim)
+C.1 <-  array(NA, dim=c(K, n.1))    #A n.1 x K matrix of individual 1's cell types (we condition on this)
+for (i in 1:n.1) {
+  alpha.i <- c(1/var.cell * XO.1[i,], 1/var.cell * (1 - sum(XO.1[i,])))
+  C.1[,i] <- rdirichlet(1, alpha.i)[1:K]
+}
+C.1.tilde <- C.1 %*% Q.1
+C1.1.tilde <- C.1.tilde[,1:d]    #K x d matrix
+C2.1.tilde <- C.1.tilde[,(d+1):n.1]   #K x (n.1 - d) matrix
+F.mat <- C2.1.tilde    #To be used in EM approximation
+
+U.C1 <- svd(t(C.1))$u
+tmp.mat <- cbind(U.C1, diag(n.1))
+tmp.Q <- qr.Q(qr(tmp.mat))
+V.C.1 <- tmp.Q[, (K+1):n.1]    #C.1 V.C.1t = 0, V.C.1 is n.1 x n.1-K and orthonormal
+
+Cov.1 <- cbind(t(X.1), t(C.1))
+H.1 <- Cov.1 %*% solve( t(Cov.1) %*% Cov.1, t(Cov.1) )
+perp.1 <- diag(n.1) - H.1
+X.tilde <- cbind(X.1 %*% V.C.1, X.2)
+
+###Simulate L and B###
+
+var.l <- 1/C.1[,n.1]^2*(1 - 0.8)/0.8      #L_gi ~ N(0, var.l(i))
+var.beta <- sqrt(var.g)/4*rep(1, d)       #B_gi ~ N(0, var.beta(i)); sd is half that of the residual noise in the model, i.e. effects are small
+L <- array(NA, dim=c(p,K))
+B <- array(NA, dim=c(p,d))
+for (k in 1:K) {
+  L[,k] <- rbinom(p, 1, pi.L) * sqrt(var.l[k]) * rnorm(p)
+}
+B[,1] <- sqrt(var.beta[1]) * rnorm(p)
+for (j in 2:d) {
+  B[,j] <- rbinom(p, 1, pi.B) * sqrt(var.beta[j]) * rnorm(p)
+}
+```
+
+## Estimate $Omega$
+For now I ONLY use the normal approximation estimator $\hat{\Omega}$. This will UNDERESTIMATE the cell type variance, so I may move use a different estimator, like a quasi-likelihood estimate (note that this is convex) or a dirichlet regression, which is definitely non-convex.
+
+```{r EstimateOmega2}
+ML.norm <- MaxLike.NewtonLS(t(X.1), t(C.1), Omega.sim, var.cell, 1e-8, vfixed=F)
+Omega.norm <- ML.norm$Omega   #A d x K matrix
+sigma.cell.norm <- sqrt(ML.norm$v)  #I am UNDERESTIMATING the variance here if C is in fact Dirichlet. I may need to write my own solver for dirichlet Likelihood...
+var.Omega <- solve(ML.norm$I)[1:(d*K),1:(d*K)]   #Covariance of Omega.hat (posterior variance of the mean). It is var((w.1,...,w.K))
+var.Omega.full <- solve(ML.norm$I)
+XO.norm.2 <- t(X.2) %*% Omega.norm    #A n.2 x K matrix of predicted mean cell types for the second set of individuals
+Cov.predict <- rbind( cbind( t(X.1), t(C.1) ), cbind( t(X.2), XO.norm.2 ) )
+Cov.predict.2 <- cbind( t(X.2), XO.norm.2 )
+
+A.est1 <- -t(X.2) %*% Omega.norm %*% solve( C.1 %*% orthog.X.1 %*% t(C.1), C.1) %*% orthog.X.1 %*% V.C.1
+B.0 <- t(X.2) %*% Omega.norm %*% solve( C.1 %*% orthog.X.1 %*% t(C.1), t(Omega.norm) %*% X.2)
+```
+
+Create variance matrix $V \in \mathbb{R}^{Kn_2 \times Kn_2}$ where $G = I_{n_2} \otimes \ell_g^T V I_{n_2} \otimes \ell_g + \sigma^2 I_{n_2}$.
+
+```{r CreateV2}
+V <- array(0, dim=c(n.2*K, n.2*K))
+Sigma.hat <- array(0, dim=c(K,K))
+for (i in 1:n.2) {
+  x.i <- cbind(X.2[,i])
+  kron.xi <- kronecker(diag(K), t(x.i))
+  p.i <- t(Omega.norm) %*% x.i
+  S.i <- kron.xi %*% var.Omega %*% t(kron.xi)
+  
+  tmp.kron.xi <- kronecker(diag(K), t(x.i))
+  tmp.kron.xi <- cbind(tmp.kron.xi, rep(0,K))
+  tmp.kron.xi <- rbind(tmp.kron.xi, c( rep(0,d*K), 1 ))
+  tmp.S.i <- tmp.kron.xi %*% var.Omega.full %*% t(tmp.kron.xi)
+  S.i.tilde <- tmp.S.i[1:K, 1:K]
+  a.i <- cbind(tmp.S.i[K+1,1:K])
+  V.i <- sigma.cell.norm^2 * ( diag(as.vector(p.i)) - S.i.tilde - p.i %*% t(p.i) ) + diag(as.vector(a.i)) - (p.i %*% t(a.i) + a.i %*% t(p.i))  #ith block is V.i + S.i
+  V[((i-1)*K+1):(i*K),((i-1)*K+1):(i*K)] <- V.i + S.i
+  Sigma.hat <- 1/n.2 * sigma.cell.norm^2 * ( diag(as.vector(p.i)) - p.i %*% t(p.i) ) + Sigma.hat
+  
+  if (i == n.2) {
+    next
+  }
+  
+ # for (j in (i+1):n.2) {
+  #  x.j <- cbind(X.2[,j])
+   # kron.xj <- kronecker(diag(K), t(x.j))
+  #  S.ij <- kron.xi %*% var.Omega %*% t(kron.xj)
+  #  V[((i-1)*K+1):(i*K), ((j-1)*K+1):(j*K)] = S.ij
+  #  V[((j-1)*K+1):(j*K), ((i-1)*K+1):(i*K)] = t(S.ij)
+  #}
+}
+S <- t(chol(Sigma.hat))     #SS' = Sigma.hat
+#S <- t( chol(var.cell * (diag(as.vector(Omega.sim)) - t(Omega.sim) %*% Omega.sim)) )
+F.mat.tilde <- solve(S, F.mat)
+SFF.tilde <- F.mat.tilde %*% t(F.mat.tilde)
+```
+
+## Simulate Data
+Simulate and analyze data with the two estimators above
+
+```{r SimulateData2}
+n.iter <- 1    #Number of data sets to simulate
+r.confound <- 10    #Additional confounders. The loadings are N(0,1) and mixings are N(0,1)
+beta1.mat <- array(0, dim=c(n.iter, p))    #Estimator 1; rows are iteration, columns are sites g = 1,...,p
+beta2.mat <- array(0, dim=c(n.iter, p))    #GEE Estimator 2
+beta3.mat <- array(0, dim=c(n.iter, p))    #Normal Approximation Estimator 3
+var.naive <- var.g * solve( t(Cov.1) %*% Cov.1 )
+for (i in 1:n.iter) {
+  ##Simulate Y.1, Y.2 conditional on C.1, X.1, X.2
+  #L.confound <- matrix(rnorm(p*r.confound), nrow=p, ncol=r.confound)
+ # W.1.confound <- matrix(rnorm(r.confound*n.1), nrow=r.confound, ncol=n.1)
+  #W.2.confound <- matrix(rnorm(r.confound*n.1), nrow=r.confound, ncol=n.2)
+  Y.1 <- B %*% X.1 + L %*% C.1 + sqrt(var.g) * matrix(rnorm(n.1*p), nrow=p, ncol=n.1)
+  Y.1.tilde <- Y.1 %*% Q.1
+  #svd.1 <- svd(Y.1 %*% ( diag(n.1) - Cov.1 %*% solve(t(Cov.1) %*% Cov.1, t(Cov.1)) ))
+  #L.confound.est <- svd.1$u[,1:10]
+  #W.1.est <- t(svd.1$v[,1:10])
+  Y1.1.tilde <- Y.1.tilde[,1:d]
+  Y2.1.tilde <- Y.1.tilde[,(d+1):n.1]
+  #W.2.est <-  
+  L.hat <- Y.1 %*% Cov.1 %*% solve(t(Cov.1) %*% Cov.1)
+  L.hat <- L.hat[,(d+1):(d+K)]
+    
+  C.2 <- array(NA, dim=c(K, n.2))   #A n.2 x K matrix of cell type proportions
+  for (j in 1:n.2) {
+    alpha.j <- 1/var.cell * c(XO.2[j,], 1-sum(XO.2[j,]))
+    C.2[,j] <- rdirichlet(1, alpha.j)[1:K]
+  }
+  Y.2 <- B %*% X.2 + L %*% C.2 + sqrt(var.g) * matrix(rnorm(n.2*p), nrow=p, ncol=n.2)
+  Y.2.tilde <- Y.2 %*% Q.2
+  Y1.2.tilde <- Y.2.tilde[,1:d]
+  Y2.2.tilde <- Y.2.tilde[,(d+1):n.2]
+  
+  ##Compute Sufficient Statistics##
+  SYY2.full <- Y2.2.tilde %*% t(Y2.2.tilde)
+  SYY1.full <- Y2.1.tilde %*% t(Y2.1.tilde)
+  SY1F.tilde.full <- Y2.1.tilde %*% t(F.mat.tilde)
+  Full.EM <-ExpMax.multL(L.hat, rep(var.g, p), n.1, n.2, d, SYY1.full, SYY2.full, SY1F.tilde.full, SFF.tilde, 1e-4)
+  var.EM <- Full.EM$Sigma
+  L.EM <- t( solve(t(S), t(Full.EM$L)) )
+  
+  #Pooling estimator for the variance#
+#  s <- Compute.s(cbind(t(X.1), C.1), Y.1)
+ # mu.var <- mean(s/(n.1-K-d))
+#  v.var <- sd(s/(n.1-K-d))^2
+#  alpha.0 <- mu.var^2/v.var + 2
+#  beta.0 <- mu.var*(alpha.0 - 1)
+#  ML.pooled <- ML.Gamma(c(alpha.0,beta.0), s, n.1-d-K, 1e-8)
+ # alpha <- ML.pooled$alpha
+  #gamma <- ML.pooled$gamma
+  
+  
+  ##Estimate B using both of the above methods##
+ # beta2.vec <- rep(0,p)
+#  sd.beta2.vec <- rep(0,p)
+ # ratio2.var <- rep(0,p)
+  #ratio1.var <- rep(0,p)
+  for (g in 1:p) {
+    #y.1.g <- Y.1[g,]
+    #y.2.g <- Y.2[g,]
+    #var.OLS.g <- 1/(n.1 - K - d) * sum( y.1.g*as.vector(perp.1 %*% y.1.g) )   #OLS estimate for sigma_g^2
+    #var.pooled.g <- (gamma + s[g]/2)/(alpha + n.1/2 - 1)      #Pooled estimate based on an IG prior with parameters estimated using empirical Bayes
+    
+    #Method 1#
+    #z.1.g <- t(V.C.1) %*% y.1.g
+    #z.2.g <- y.2.g - t(X.2) %*% Omega.norm %*% L.hat[g,]
+    #Est.1.g <- Estimator.1(var.g, A.est1, B.0, X.tilde, V, L.hat[g,], z.1.g, z.2.g)
+    #beta1.mat[i,g] <- Est.1.g$beta[2,1]
+    
+    #Method 2#
+    #theta.0.g <- solve(t(Cov.predict) %*% Cov.predict, t(Cov.predict)) %*% c(y.1.g, y.2.g)
+    #Est.2.g <- Estimator.2(var.g, C.1, X.1, X.2, t(Omega.sim), V, y.1.g, y.2.g, theta.0.g, 1e-6)
+    #beta.2.g <- Est.2.g$beta
+    #beta2.mat[i,g] <- beta.2.g[2]
+    #T.g <- Est.2.g$T
+    #T.naive.g <- Est.2.g$naive.T
+    
+    #beta2.vec[g] <- beta.2.g[2]
+    #sd.beta2.vec[g] <- sqrt(diag(solve(T.g)))[2]
+    #ratio2.var[g] <- solve(T.naive.g)[2,2]/solve(T.g)[2,2]
+    #ratio1.var[g] <- solve(T.naive.g)[2,2]/Est.1.g$Var[2,2]
+    
+    ##EM Estimate##
+    y2.1.g.tilde <- rbind(Y2.1.tilde[g,])
+    y2.2.g.tilde <- rbind(Y2.2.tilde[g,])
+    #SYY2 <- y2.2.g.tilde %*% t(y2.2.g.tilde)
+    #SYY1 <- y2.1.g.tilde %*% t(y2.1.g.tilde)
+    #SY1F.tilde <- y2.1.g.tilde %*% t(F.mat.tilde)
+    #L.0.g <- rbind(L[g,]) %*% S
+    #Sigma.0.g <- var.g
+    #EM.g <- ExpMax(L.0.g, Sigma.0.g, n.1, n.2, d, SYY1, SYY2, SY1F.tilde, SFF.tilde, 1e-6)
+    #l.em.g <- solve(t(S), t(EM.g$L))
+    #var.em.g <- EM.g$Sigma
+    l.em.g <- L.EM[g,]
+    
+    
+    y.total.g <- c(Y1.1.tilde[g,] - t(C1.1.tilde) %*% l.em.g, Y1.2.tilde[g,] - R.2 %*% Omega.norm %*% l.em.g)
+    var.g.g <- var.EM[g]
+    U.g.1 <- 1/var.g.g*diag(d) + t(C1.1.tilde) %*% solve( 1/var.g.g * F.mat %*% t(F.mat) + (n.2 - d) * Sigma.hat %*% l.em.g %*% t(l.em.g) %*% Sigma.hat / (as.numeric(var.g.g + t(l.em.g) %*% Sigma.hat %*% l.em.g)) ) %*% C1.1.tilde
+    U.g.2 <- diag( rep(var.g.g + t(l.em.g) %*% Sigma.hat %*% l.em.g, d) ) + R.2 %*% Omega.norm %*% solve( 1/var.g.g * F.mat %*% t(F.mat) + (n.2 - d) * Sigma.hat %*% l.em.g %*% t(l.em.g) %*% Sigma.hat / (as.numeric(var.g.g + t(l.em.g) %*% Sigma.hat %*% l.em.g)) ) %*% t(R.2 %*% Omega.norm)
+    U.g <- rbind( cbind( U.g.1, matrix(0,nrow=d,ncol=d) ), cbind( matrix(0,nrow=d,ncol=d), U.g.2 ) )
+    beta.3.g <- solve(t(X.R) %*% solve(U.g, X.R), t(X.R) %*% solve(U.g, y.total.g))
+    beta3.mat[i,g] <- beta.3.g[2]
+  }
+
+  if (i == 1) {
+    leapp.out <- leapp(data=Y.2, pred.prim=cbind(X.2[2,]), pred.covar=cbind(X.2[1,]))
+    plot(B[,2], leapp.out$gamma/10, main="Comparing LEAPP(black), My Method(red), Naive Estimate (blue)", xlab="True B", ylab="Estimated B")
+    points(B[,2], beta3.mat[1,], col="red")
+    
+    X.total <- rbind(t(X.1), t(X.2))
+    B.naive <- cbind(Y.1, Y.2) %*% X.total %*% solve(t(X.total)%*%X.total)
+    points(B[,2], B.naive[,2], col="blue")
+  }
+  
+}
+```
+
+
+##Simulate Data with Different Hyperparameters (make the effect of B small, L sparse)
+In these simulations, the effect $B = \sigma_g/4$, $\pi_B = 0.3$, $\pi_L = 0.5$, i.e. half of the sites have identical methylation in cell types. The goal here is to get some insight into the breakdown point of methods that do not use training data. This will occur when $B$ and $L\Omega$ are not identifiable, i.e. when both $B$ and $L\Omega$ are dense or when $B$ and $L\Omega$ are 0 on the SAME residues. That is, we require there to be many residues where $B$ is 0 but $L$ is non-zero. Note that when $L=0$, we lose power to estimate $\Omega$ in these unsupervised methods, i.e. we require methylation to be informative for cell type!!
+
+```{r Initialize3}
+pi.B <- 0.3
+pi.L <- 0.7
+n.1 <- 100     #Number of individuals with known cell type
+n.2 <- 400    #Number of individuals with unmeasured cell type
+p <- 1000      #Number of methylation sites
+var.g <- 0.75^2    #Diagonal elements of Sigma. Sigma is assumed to be diagonal
+var.cell <- 0.15^2    #Precision of cell measurement
+
+X.1 <- rbind(rep(1,n.1), c(rep(1,n.1/2), rep(0,n.1/2)))   #A d x n.1 matrix
+orthog.X.1 <- diag(n.1) - t(X.1) %*% solve( X.1 %*% t(X.1), X.1 )
+X.2 <- rbind(rep(1,n.2), c(rep(1,n.2/2), rep(0,n.2/2)))   #A d x n.2 matrix
+orthog.X.2 <- diag(n.2) - t(X.2) %*% solve( X.2 %*% t(X.2), X.2 )
+d <- nrow(X.1)
+
+#X.1 <- rbind(rep(1,n.1))   #A d x n.1 matrix
+#orthog.X.1 <- diag(n.1) - t(X.1) %*% solve( X.1 %*% t(X.1), X.1 )
+#X.2 <- rbind(rep(1,n.2))   #A d x n.2 matrix
+#orthog.X.2 <- diag(n.2) - t(X.2) %*% solve( X.2 %*% t(X.2), X.2 )
+#d <- nrow(X.1)
+
+##Compute QR for X.1', X.2'##
+qr.1 <- qr(t(X.1))
+qr.2 <- qr(t(X.2))
+R.1 <- qr.R(qr.1)
+Q1.1 <- qr.Q(qr.1)
+Q2.1 <- svd(orthog.X.1)$u[,1:(n.1-d)]
+Q.1 <- cbind(Q1.1, Q2.1)
+R.2 <- qr.R(qr.2)
+Q1.2 <- qr.Q(qr.2)
+Q2.2 <- svd(orthog.X.2)$u[,1:(n.2-d)]
+Q.2 <- cbind(Q1.2, Q2.2)
+
+X.R <- rbind(R.1, R.2)
+
+###Simulate cell type proportions###
+
+Omega.sim = Omega[1:2,1:3]; Omega.sim[2,2] = 0.04
+#Omega.sim = rbind(Omega[1:1,1:3])
+XO.1 <- t(X.1) %*% Omega.sim
+XO.2 <- t(X.2) %*% Omega.sim
+K <- ncol(Omega.sim)
+C.1 <-  array(NA, dim=c(K, n.1))    #A n.1 x K matrix of individual 1's cell types (we condition on this)
+for (i in 1:n.1) {
+  alpha.i <- c(1/var.cell * XO.1[i,], 1/var.cell * (1 - sum(XO.1[i,])))
+  C.1[,i] <- rdirichlet(1, alpha.i)[1:K]
+}
+C.1.tilde <- C.1 %*% Q.1
+C1.1.tilde <- C.1.tilde[,1:d]    #K x d matrix
+C2.1.tilde <- C.1.tilde[,(d+1):n.1]   #K x (n.1 - d) matrix
+F.mat <- C2.1.tilde    #To be used in EM approximation
+
+U.C1 <- svd(t(C.1))$u
+tmp.mat <- cbind(U.C1, diag(n.1))
+tmp.Q <- qr.Q(qr(tmp.mat))
+V.C.1 <- tmp.Q[, (K+1):n.1]    #C.1 V.C.1t = 0, V.C.1 is n.1 x n.1-K and orthonormal
+
+Cov.1 <- cbind(t(X.1), t(C.1))
+H.1 <- Cov.1 %*% solve( t(Cov.1) %*% Cov.1, t(Cov.1) )
+perp.1 <- diag(n.1) - H.1
+X.tilde <- cbind(X.1 %*% V.C.1, X.2)
+
+###Simulate L and B###
+
+var.l <- 1/C.1[,n.1]^2*(1 - 0.8)/0.8      #L_gi ~ N(0, var.l(i))
+var.beta <- sqrt(var.g)/4*rep(1, d)       #B_gi ~ N(0, var.beta(i)); sd is half that of the residual noise in the model, i.e. effects are small
+L <- array(NA, dim=c(p,K))
+B <- array(NA, dim=c(p,d))
+for (k in 1:K) {
+  L[,k] <- rbinom(p, 1, pi.L) * sqrt(var.l[k]) * rnorm(p)
+}
+B[,1] <- sqrt(var.beta[1]) * rnorm(p)
+for (j in 2:d) {
+  B[,j] <- rbinom(p, 1, pi.B) * sqrt(var.beta[j]) * rnorm(p)
+}
+```
+
+## Estimate $Omega$
+For now I ONLY use the normal approximation estimator $\hat{\Omega}$. This will UNDERESTIMATE the cell type variance, so I may move use a different estimator, like a quasi-likelihood estimate (note that this is convex) or a dirichlet regression, which is definitely non-convex.
+
+```{r EstimateOmega3}
+ML.norm <- MaxLike.NewtonLS(t(X.1), t(C.1), Omega.sim, var.cell, 1e-8, vfixed=F)
+Omega.norm <- ML.norm$Omega   #A d x K matrix
+sigma.cell.norm <- sqrt(ML.norm$v)  #I am UNDERESTIMATING the variance here if C is in fact Dirichlet. I may need to write my own solver for dirichlet Likelihood...
+var.Omega <- solve(ML.norm$I)[1:(d*K),1:(d*K)]   #Covariance of Omega.hat (posterior variance of the mean). It is var((w.1,...,w.K))
+var.Omega.full <- solve(ML.norm$I)
+XO.norm.2 <- t(X.2) %*% Omega.norm    #A n.2 x K matrix of predicted mean cell types for the second set of individuals
+Cov.predict <- rbind( cbind( t(X.1), t(C.1) ), cbind( t(X.2), XO.norm.2 ) )
+Cov.predict.2 <- cbind( t(X.2), XO.norm.2 )
+
+A.est1 <- -t(X.2) %*% Omega.norm %*% solve( C.1 %*% orthog.X.1 %*% t(C.1), C.1) %*% orthog.X.1 %*% V.C.1
+B.0 <- t(X.2) %*% Omega.norm %*% solve( C.1 %*% orthog.X.1 %*% t(C.1), t(Omega.norm) %*% X.2)
+```
+
+Create variance matrix $V \in \mathbb{R}^{Kn_2 \times Kn_2}$ where $G = I_{n_2} \otimes \ell_g^T V I_{n_2} \otimes \ell_g + \sigma^2 I_{n_2}$.
+
+```{r CreateV3}
+V <- array(0, dim=c(n.2*K, n.2*K))
+Sigma.hat <- array(0, dim=c(K,K))
+for (i in 1:n.2) {
+  x.i <- cbind(X.2[,i])
+  kron.xi <- kronecker(diag(K), t(x.i))
+  p.i <- t(Omega.norm) %*% x.i
+  S.i <- kron.xi %*% var.Omega %*% t(kron.xi)
+  
+  tmp.kron.xi <- kronecker(diag(K), t(x.i))
+  tmp.kron.xi <- cbind(tmp.kron.xi, rep(0,K))
+  tmp.kron.xi <- rbind(tmp.kron.xi, c( rep(0,d*K), 1 ))
+  tmp.S.i <- tmp.kron.xi %*% var.Omega.full %*% t(tmp.kron.xi)
+  S.i.tilde <- tmp.S.i[1:K, 1:K]
+  a.i <- cbind(tmp.S.i[K+1,1:K])
+  V.i <- sigma.cell.norm^2 * ( diag(as.vector(p.i)) - S.i.tilde - p.i %*% t(p.i) ) + diag(as.vector(a.i)) - (p.i %*% t(a.i) + a.i %*% t(p.i))  #ith block is V.i + S.i
+  V[((i-1)*K+1):(i*K),((i-1)*K+1):(i*K)] <- V.i + S.i
+  Sigma.hat <- 1/n.2 * sigma.cell.norm^2 * ( diag(as.vector(p.i)) - p.i %*% t(p.i) ) + Sigma.hat
+  
+  if (i == n.2) {
+    next
+  }
+  
+ # for (j in (i+1):n.2) {
+  #  x.j <- cbind(X.2[,j])
+   # kron.xj <- kronecker(diag(K), t(x.j))
+  #  S.ij <- kron.xi %*% var.Omega %*% t(kron.xj)
+  #  V[((i-1)*K+1):(i*K), ((j-1)*K+1):(j*K)] = S.ij
+  #  V[((j-1)*K+1):(j*K), ((i-1)*K+1):(i*K)] = t(S.ij)
+  #}
+}
+S <- t(chol(Sigma.hat))     #SS' = Sigma.hat
+#S <- t( chol(var.cell * (diag(as.vector(Omega.sim)) - t(Omega.sim) %*% Omega.sim)) )
+F.mat.tilde <- solve(S, F.mat)
+SFF.tilde <- F.mat.tilde %*% t(F.mat.tilde)
+```
+
+## Simulate Data
+Simulate and analyze data with the two estimators above
+
+```{r SimulateData3}
+n.iter <- 1    #Number of data sets to simulate
+r.confound <- 10    #Additional confounders. The loadings are N(0,1) and mixings are N(0,1)
+beta1.mat <- array(0, dim=c(n.iter, p))    #Estimator 1; rows are iteration, columns are sites g = 1,...,p
+beta2.mat <- array(0, dim=c(n.iter, p))    #GEE Estimator 2
+beta3.mat <- array(0, dim=c(n.iter, p))    #Normal Approximation Estimator 3
+var.naive <- var.g * solve( t(Cov.1) %*% Cov.1 )
+for (i in 1:n.iter) {
+  ##Simulate Y.1, Y.2 conditional on C.1, X.1, X.2
+  #L.confound <- matrix(rnorm(p*r.confound), nrow=p, ncol=r.confound)
+ # W.1.confound <- matrix(rnorm(r.confound*n.1), nrow=r.confound, ncol=n.1)
+  #W.2.confound <- matrix(rnorm(r.confound*n.1), nrow=r.confound, ncol=n.2)
+  Y.1 <- B %*% X.1 + L %*% C.1 + sqrt(var.g) * matrix(rnorm(n.1*p), nrow=p, ncol=n.1)
+  Y.1.tilde <- Y.1 %*% Q.1
+  #svd.1 <- svd(Y.1 %*% ( diag(n.1) - Cov.1 %*% solve(t(Cov.1) %*% Cov.1, t(Cov.1)) ))
+  #L.confound.est <- svd.1$u[,1:10]
+  #W.1.est <- t(svd.1$v[,1:10])
+  Y1.1.tilde <- Y.1.tilde[,1:d]
+  Y2.1.tilde <- Y.1.tilde[,(d+1):n.1]
+  #W.2.est <-  
+  L.hat <- Y.1 %*% Cov.1 %*% solve(t(Cov.1) %*% Cov.1)
+  L.hat <- L.hat[,(d+1):(d+K)]
+    
+  C.2 <- array(NA, dim=c(K, n.2))   #A n.2 x K matrix of cell type proportions
+  for (j in 1:n.2) {
+    alpha.j <- 1/var.cell * c(XO.2[j,], 1-sum(XO.2[j,]))
+    C.2[,j] <- rdirichlet(1, alpha.j)[1:K]
+  }
+  Y.2 <- B %*% X.2 + L %*% C.2 + sqrt(var.g) * matrix(rnorm(n.2*p), nrow=p, ncol=n.2)
+  Y.2.tilde <- Y.2 %*% Q.2
+  Y1.2.tilde <- Y.2.tilde[,1:d]
+  Y2.2.tilde <- Y.2.tilde[,(d+1):n.2]
+  
+  ##Compute Sufficient Statistics##
+  SYY2.full <- Y2.2.tilde %*% t(Y2.2.tilde)
+  SYY1.full <- Y2.1.tilde %*% t(Y2.1.tilde)
+  SY1F.tilde.full <- Y2.1.tilde %*% t(F.mat.tilde)
+  Full.EM <-ExpMax.multL(L.hat, rep(var.g, p), n.1, n.2, d, SYY1.full, SYY2.full, SY1F.tilde.full, SFF.tilde, 1e-4)
+  var.EM <- Full.EM$Sigma
+  L.EM <- t( solve(t(S), t(Full.EM$L)) )
+  
+  #Pooling estimator for the variance#
+#  s <- Compute.s(cbind(t(X.1), C.1), Y.1)
+ # mu.var <- mean(s/(n.1-K-d))
+#  v.var <- sd(s/(n.1-K-d))^2
+#  alpha.0 <- mu.var^2/v.var + 2
+#  beta.0 <- mu.var*(alpha.0 - 1)
+#  ML.pooled <- ML.Gamma(c(alpha.0,beta.0), s, n.1-d-K, 1e-8)
+ # alpha <- ML.pooled$alpha
+  #gamma <- ML.pooled$gamma
+  
+  
+  ##Estimate B using both of the above methods##
+ # beta2.vec <- rep(0,p)
+#  sd.beta2.vec <- rep(0,p)
+ # ratio2.var <- rep(0,p)
+  #ratio1.var <- rep(0,p)
+  for (g in 1:p) {
+    #y.1.g <- Y.1[g,]
+    #y.2.g <- Y.2[g,]
+    #var.OLS.g <- 1/(n.1 - K - d) * sum( y.1.g*as.vector(perp.1 %*% y.1.g) )   #OLS estimate for sigma_g^2
+    #var.pooled.g <- (gamma + s[g]/2)/(alpha + n.1/2 - 1)      #Pooled estimate based on an IG prior with parameters estimated using empirical Bayes
+    
+    #Method 1#
+    #z.1.g <- t(V.C.1) %*% y.1.g
+    #z.2.g <- y.2.g - t(X.2) %*% Omega.norm %*% L.hat[g,]
+    #Est.1.g <- Estimator.1(var.g, A.est1, B.0, X.tilde, V, L.hat[g,], z.1.g, z.2.g)
+    #beta1.mat[i,g] <- Est.1.g$beta[2,1]
+    
+    #Method 2#
+    #theta.0.g <- solve(t(Cov.predict) %*% Cov.predict, t(Cov.predict)) %*% c(y.1.g, y.2.g)
+    #Est.2.g <- Estimator.2(var.g, C.1, X.1, X.2, t(Omega.sim), V, y.1.g, y.2.g, theta.0.g, 1e-6)
+    #beta.2.g <- Est.2.g$beta
+    #beta2.mat[i,g] <- beta.2.g[2]
+    #T.g <- Est.2.g$T
+    #T.naive.g <- Est.2.g$naive.T
+    
+    #beta2.vec[g] <- beta.2.g[2]
+    #sd.beta2.vec[g] <- sqrt(diag(solve(T.g)))[2]
+    #ratio2.var[g] <- solve(T.naive.g)[2,2]/solve(T.g)[2,2]
+    #ratio1.var[g] <- solve(T.naive.g)[2,2]/Est.1.g$Var[2,2]
+    
+    ##EM Estimate##
+    y2.1.g.tilde <- rbind(Y2.1.tilde[g,])
+    y2.2.g.tilde <- rbind(Y2.2.tilde[g,])
+    #SYY2 <- y2.2.g.tilde %*% t(y2.2.g.tilde)
+    #SYY1 <- y2.1.g.tilde %*% t(y2.1.g.tilde)
+    #SY1F.tilde <- y2.1.g.tilde %*% t(F.mat.tilde)
+    #L.0.g <- rbind(L[g,]) %*% S
+    #Sigma.0.g <- var.g
+    #EM.g <- ExpMax(L.0.g, Sigma.0.g, n.1, n.2, d, SYY1, SYY2, SY1F.tilde, SFF.tilde, 1e-6)
+    #l.em.g <- solve(t(S), t(EM.g$L))
+    #var.em.g <- EM.g$Sigma
+    l.em.g <- L.EM[g,]
+    
+    
+    y.total.g <- c(Y1.1.tilde[g,] - t(C1.1.tilde) %*% l.em.g, Y1.2.tilde[g,] - R.2 %*% Omega.norm %*% l.em.g)
+    var.g.g <- var.EM[g]
+    U.g.1 <- 1/var.g.g*diag(d) + t(C1.1.tilde) %*% solve( 1/var.g.g * F.mat %*% t(F.mat) + (n.2 - d) * Sigma.hat %*% l.em.g %*% t(l.em.g) %*% Sigma.hat / (as.numeric(var.g.g + t(l.em.g) %*% Sigma.hat %*% l.em.g)) ) %*% C1.1.tilde
+    U.g.2 <- diag( rep(var.g.g + t(l.em.g) %*% Sigma.hat %*% l.em.g, d) ) + R.2 %*% Omega.norm %*% solve( 1/var.g.g * F.mat %*% t(F.mat) + (n.2 - d) * Sigma.hat %*% l.em.g %*% t(l.em.g) %*% Sigma.hat / (as.numeric(var.g.g + t(l.em.g) %*% Sigma.hat %*% l.em.g)) ) %*% t(R.2 %*% Omega.norm)
+    U.g <- rbind( cbind( U.g.1, matrix(0,nrow=d,ncol=d) ), cbind( matrix(0,nrow=d,ncol=d), U.g.2 ) )
+    beta.3.g <- solve(t(X.R) %*% solve(U.g, X.R), t(X.R) %*% solve(U.g, y.total.g))
+    beta3.mat[i,g] <- beta.3.g[2]
+  }
+
+  if (i == 1) {
+    leapp.out <- leapp(data=Y.2, pred.prim=cbind(X.2[2,]), pred.covar=cbind(X.2[1,]))
+    plot(B[,2], leapp.out$gamma/10, main="Comparing LEAPP(black), My Method(red), Uncorrected Estimate (blue)", xlab="True B", ylab="Estimated B")
+    points(B[,2], beta3.mat[1,], col="red")
+    
+    X.total <- rbind(t(X.1), t(X.2))
+    B.naive <- cbind(Y.1, Y.2) %*% X.total %*% solve(t(X.total)%*%X.total)
+    #points(B[,2], B.naive[,2], col="blue")
+  }
+  
+}
+```
+
+##Conclusions
+We see from the three simulation scenarios above that we require $B$ to be sparse and $L$ to be dense to get a reliable estimate of $\Omega$, and therefore a reliable estimate for $B$. If $L$ is somewhat sparse, we require the non-sparse portions of $B$ to be large to estimate them via robust regression.
 
 ## Session information
 
