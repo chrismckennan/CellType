@@ -177,7 +177,7 @@ F.mat <- C.1.tilde[,(d+1):n.1]    #A K x (n.1 - d) matrix
 ```
 
 Get starting values for $\Gamma$, $L$, $\Lambda$, $\Sigma$.
-```{r StartingValues, eval=F}
+```{r StartingValues, eval=F, echo=F}
 r.confound <- 15         #Additional confounders in the model, i.e. Gamma is p x r.confound
 scale.factor <- 1#/svd(F.mat)$d[1]    #Make largest singular value of F.mat 1. If I do this, I will need to scale Lambda_EM <- scale.factor^2 * Lambda, where Lambda_EM is to be used in the EM. I will call F.mat.EM <- scale.factor * F.mat and L.EM <- 1/scale.factor * L
 F.mat.EM <- scale.factor * F.mat
@@ -201,7 +201,7 @@ Gamma.0 <- Gamma.0 %*% v.GtSG
 
 Optimize for $L$, $\Gamma$, $\Lambda$, $\Sigma$ using maximum likelihood. Note that the data are not informative for $\Gamma$ with only 60 individuals, so I set the tolerance to be $10^{-3}$. We can accurately estimate $L$, $\Lambda$, $\Sigma$, however. For this data set, it takes ~10 minutes to converge.
 
-```{r EMPartialCells, eval=F}
+```{r EMPartialCells, eval=F, echo=F}
 EM.PartialCell <- FullEM(L.0, Sigma.0, Gamma.0, Lambda.0, Y.1.2 - apply(Y.1.2, 1, mean), Y.2.2 - apply(Y.2.2, 1, mean), F.mat.EM - apply(F.mat.EM, 1, mean), 1e-3, 5e3)
 L <- EM.PartialCell$L * scale.factor
 Gamma <- EM.PartialCell$Gamma
@@ -214,7 +214,7 @@ Sigma <- EM.PartialCell$Sigma
 I will treat cell type as a nuisance parameter and just estimate the $d-1$ coefficients for $B$ (I don't care about the intercept).
 
 Estimate the latent dimension INCLUDING Cell type in the model
-```{r EstRCell1, eval=F}
+```{r EstRCell1, eval=F, echo=F}
 Cov.orthog <- diag(n) - t(Cov.all) %*% solve(Cov.all %*% t(Cov.all), Cov.all)
 M.resids <- M %*% Cov.orthog
 pvalues.r <- Find.r(M.resids, 30, 20)   #Only look at 30 possible singular values and 20 permutations
@@ -222,7 +222,7 @@ r.confound.withCell <- 30 - sum(pvalues.r)     #A crude, but reliable estimate f
 ```
 
 Estimate the latent dimension NOT INCLUDING Cell type in the model
-```{r EstRCell, eval=F}
+```{r EstRCell, eval=F, echo=F}
 X.orthog <- diag(n) - t(X.all) %*% solve(X.all %*% t(X.all), X.all)
 M.resids.X <- M %*% X.orthog
 pvalues.r.X <- Find.r(M.resids.X, 30, 20)   #Only look at 30 possible singular values and 20 permutations
@@ -231,7 +231,7 @@ r.confound.noCell <- 30 - sum(pvalues.r.X)     #A crude, but reliable estimate f
 
 
 Apply CATE to the M-value data with and without cell type data
-```{r CATEall, eval=F}
+```{r CATEall, eval=F, echo=F}
 data.CATE <- data.frame(cbind(t(X.all)[,2:d], t(C.0)))
 data.CATE.all <- data.frame(cbind(t(X.all)[,2:d], t(C.all[1:(nrow(C.all)-1),])))
 colnames(data.CATE) <- c("sexm", "groupHutterite", "Age", "Tcells", "Eos", "Neutro")
@@ -318,7 +318,7 @@ If I used the BLUP for the random effect $Z = W + \alpha X$ as a proxy for the u
 ##Set up Simulations and Describe Why we Lose Power Without Cell Type
 
 These are initialized parameters used in all simulations
-```{r InitSimData, include=F, eval=F}
+```{r InitSimData, include=F, eval=F, echo=F}
 K.all <- nrow(C.all) - 1
 Cov.cell.all <- rbind(X.all[1:3,], C.all[1:K.all,])
 Gamma.sim <- B.est.cell.all[,(3+K.all+1):(ncol(B.est.cell.all))]     #p x r
@@ -348,7 +348,7 @@ Sigma.sex <- B.est.nocell[,2]/Zscores.nocell[,1]
 
 
 The below code creates a plot of the OLS estimator with JUST $X$ and the OLS estimator with $X$ and $C$. The naive estimates with $C$ are significantly larger than the naive effects estimates without $C$. There is something going on here...
-```{r InvestigateCellEffect, eval=F}
+```{r InvestigateCellEffect, eval=F, echo=F}
 group.nocell <- (M %*% t(X.all) %*% solve(X.all %*% t(X.all)) )[,3]
 group.cell <- (M %*% t(Cov.all) %*% solve(Cov.all %*% t(Cov.all)) )[,3]
 plot(group.cell, group.nocell, xlab="OLS Estimate for Group Effect WITH Cell type Observed", ylab="OLS Estiamte for Group Effect WITHOUT Cell type", main="Naive OLS Estimates", xlim=c(-2,2), ylim=c(-2,2))
@@ -378,7 +378,7 @@ meaning for smaller sample sizes and/or large $r$, the terms $\tilde{W}_1^T \til
 
 I am observing the apparent loss of power with real data because it is difficult to get an objective estimate for the latent dimension $r$. It's dangerous to try and minimize the estimated $\pi_0$, as this will probably cause too many false positives. I think a reasonable method is bi-cross validation proposed by Owen. We will have to deal with the issue of "ugly" p-value histograms.
 
-```{r SimRealData, eval=F}
+```{r SimRealData, eval=F, echo=F}
 set.seed(1988)
 
 d.sim <- d - 2
@@ -470,7 +470,7 @@ plot(sort(q.cell.all.group.sim$qvalue), fsr.cell.all.group$fdr, xlab="Est. Q-val
 ## L sparse, B sparse
 
 Look at size of $L$
-```{r SizeofL, eval=F}
+```{r SizeofL, eval=F, echo=F}
 B.oper <- t(Cov.all) %*% solve(Cov.all %*% t(Cov.all))
 B.est.tmp <- M %*% B.oper
 L.est.tmp <- B.est.tmp[,5:7]
@@ -478,7 +478,7 @@ L.est.tmp <- B.est.tmp[,5:7]
 
 
 Here I will position the zero $B$'s with the non-zero $L$'s. If $L$ is sparse, the estimated correlation $\Omega$ between $X$ and $C$ should be incorrect and we should find too many non-zero $B$'s.
-```{r SimRealData_AddL, eval=F}
+```{r SimRealData_AddL, eval=F, echo=F}
 var.Tcells <- 5   #Index 1 in L
 var.Eos <- 5    #Index 3 in L
 pi0.Tcells <- 0.6    #Probability effect due to Tcells is 0
@@ -545,7 +545,7 @@ We see that we have more power to detect effects at a given false disocery propo
 
 
 Here I assume that $L$ and $B$ are both sparse. The placement of the 0's is independent in both $L$ and $B$. $LC$ has standardized effect size $(0.33, 0.18, 0.94)$
-```{r SimSynthData_SparseLSparseB_Ind}
+```{r SimSynthData_SparseLSparseB_Ind, echo=F, eval=F}
 set.seed(1988)
 n.sim <- 200   #Number of individuals
 r.sim <- 5     #Number of additional confounders
@@ -725,7 +725,7 @@ We see that we confidently identify many incorrect CpG sites, because CATE canno
 ## SE for $L\Omega X = (1.0, 1.0, 1.0)$, $n = 200$.
 
 Here I assume that $L$ and $B$ are both sparse with $\pi_0 = 0.8$. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(1.0, 1.0, 1.0)$.
-```{r SimSynthData_SparseLSparseB_Ind_LargeL0, echo=F}
+```{r SimSynthData_SparseLSparseB_Ind_LargeL0, echo=F, eval=F}
 set.seed(1988)
 n.sim <- 200   #Number of individuals
 r.sim <- 5     #Number of additional confounders
@@ -773,7 +773,7 @@ analyzed.data
 ## SE of $L\Omega X = (0.75, 0.75, 0.75)$, $n = 400$
 
 Here I assume that $L$ and $B$ are both sparse with $\pi_0 = 0.8$. The placement of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.75, 0.75, 0.75)$.
-```{r SimSynthData_SparseLSparseB_Ind_LargeL1, echo=F}
+```{r SimSynthData_SparseLSparseB_Ind_LargeL1, echo=F, eval=F}
 set.seed(1988)
 n.sim <- 400   #Number of individuals
 r.sim <- 5     #Number of additional confounders
@@ -962,7 +962,7 @@ analyzed.data
 ## SE for $LC = (0.5, 0.5, 0.5)$, $n = 400$, $\pi_L = 0.7$, $\pi_B = 1$.
 
 Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $LC$ is $(0.75, 0.75, 0.75)$.
-```{r SimSynthData_SparseLSparseB_Ind_LargeL5, echo=F}
+```{r SimSynthData_SparseLSparseB_Ind_LargeL5, echo=F, eval=F}
 set.seed(1988)
 n.sim <- 400   #Number of individuals
 r.sim <- 5     #Number of additional confounders
@@ -1151,7 +1151,7 @@ analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
 
 
 Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(1.0, 0, 0)$.
-```{r SimSynthData_SparseLSparseB_Ind_LargeL9, echo=F, eval=T}
+```{r SimSynthData_SparseLSparseB_Ind_LargeL9, echo=F, eval=F}
 set.seed(1988)
 n.sim <- 100   #Number of individuals
 r.sim <- 5     #Number of additional confounders
@@ -1198,7 +1198,7 @@ We don't see much of a difference when having cell type in cases when there is o
 ## n = 100, SE for $L\Omega X$ is 0.75, $\pi_{0_L} = 0.8$ and $\pi_B = 0.95$
 
 Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.75, 0.75, 0.75)$.
-```{r SimSynthData_SparseLSparseB_Ind_LargeL10, echo=F, eval=T}
+```{r SimSynthData_SparseLSparseB_Ind_LargeL10, echo=F, eval=F}
 set.seed(1988)
 n.sim <- 100   #Number of individuals
 r.sim <- 5     #Number of additional confounders
@@ -1245,7 +1245,7 @@ analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
 ## n = 100, SE for $L\Omega X$ is 0.75, $\pi_{0_L} = 0.8$ and $\pi_B = 0.95$
 
 Here I assume that $L$ and $B$ are both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.75, 0.75, 0.75)$.
-```{r SimSynthData_SparseLSparseB_Ind_LargeL11, echo=F, eval=T}
+```{r SimSynthData_SparseLSparseB_Ind_LargeL11, echo=F, eval=F}
 set.seed(1988)
 n.sim <- 100   #Number of individuals
 r.sim <- 5     #Number of additional confounders
@@ -1291,7 +1291,7 @@ analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
 ## n = 100, $\pi_{0_{\text{Neutro}}} = 0.7$, Rest 0
 
 Here I assume $B$ is both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.5, 0.5, 0.5)$. Something is happening with neutrophils...DO NOT CHANGE THIS CODE!!!
-```{r SimSynthData_SparseLSparseB_Ind_LargeL12, echo=F, eval=T}
+```{r SimSynthData_SparseLSparseB_Ind_Neutrophils_Original, echo=T, eval=T}
 set.seed(1988)
 n.sim <- 100   #Number of individuals
 r.sim <- 5     #Number of additional confounders
@@ -1336,20 +1336,30 @@ se.tcells <- sigma.L.sim[3] / sqrt(0.15) * Omega.sim[1,3]
 se.eos <- sigma.L.sim[3] / sqrt(0.15) * Omega.sim[2,3]
 ```
 Something significant appears to be happening with Neutrophils. I will test this below.
+
 1.) If I increase the effect size for Neutrophils, CATE does well.
+
 2.) It has nothing to do with the size of the other confounders that are uncorrelated with $X$.
-3.) If I reduce the residual variance of my residuals while keeping the confounders constant, CATE does VERY poorly. If I reduct both to almost 0, I see the same effect had I not changed anything. I can therefore conclude that this is not a problem with sample size.
-4.) If I keep the Eos standardized effect size to 0.19, drastically reduce the residual variance, and decrease the standardize effect size of $B$ to 1/2 that of $L \Omega$, 
+
+3.) If I reduce the residual variance of my residuals while keeping the confounders constant, CATE does VERY poorly. If I reduce both to almost 0, I see the same effect had I not changed anything. I can therefore conclude that this is not a problem with sample size.
+
+4.) Size of $B$:
+  i.) When I have VERY small residuals, 
+  
 5.) When I update Tcells to the appropriate effect size (standardized effect for $L\Omega X = 0.19$), I see a slightly smaller effect. When I do the same for Eos, I see NO effect. If I decrease $\alpha_{\text{cell}}$ so that Eosinophils have the same variance as Neutrophils had, I also see no effect.
+
 6.) When I increase the Eos effect from 0.02 in Amish to 0.12 in Hutterites while keeping the effect size constant at around 0.19, CATE doe VERY poorly. The Hutterites have a 5-fold increase in the variance of cell type effect, indicating that the change in variance, along with $B$ having a larger effect size (I don't see much change when the main effect and cell type are roughly the same. I do see it when $B$ is roughly twice the effect size due to cell type).
-7.) When more than one effect is non-zero but sparse ($\pi_0 = 0.7$), I see an even LARGER effect.
+
+7.) When more than one effect is non-zero but sparse ($\pi_0 = 0.7$), I do just as poorly as the worst offender.
+
+8.) When $L$ is dense, I do poorly but not as poorly as when $L$ is sparse.
 
 
 
 ## n = 100, $\pi_{0_{\text{Neutro}}} = 0.7$, Rest 0
 
 Here I assume $B$ is both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.5, 0.5, 0.5)$. Something is happening with neutrophils...
-```{r SimSynthData_SparseLSparseB_Ind_LargeL12, echo=F, eval=T}
+```{r SimSynthData_SparseLSparseB_Ind_LargeL12, echo=F, eval=F}
 set.seed(1988)
 n.sim <- 100   #Number of individuals
 r.sim <- 5     #Number of additional confounders
@@ -1363,6 +1373,7 @@ v.sigma.sim <- 0.03^2
 beta.sigma <- mu.sigma.sim/v.sigma.sim
 alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
 sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+sigma.B.sim[1] <- 0
 
 Omega.sim <- Omega.QL
 Omega.sim[1,3] <- 0.04
@@ -1392,6 +1403,143 @@ colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
 #conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="ed", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
 analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
 ```
+
+
+The below code simulates data with only 1 covariate of interest (I see the same effect with Neutrophils here that I do with 2 covariates).
+```{r SimSynthData_SparseLSparseB_Ind_Neutrophils, echo=T, eval=T}
+set.seed(1988)
+n.sim <- 100   #Number of individuals
+r.sim <- 5     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 1     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(1, 1, 0.7)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[,-c(2,4)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="ed", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData2(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
+```
+
+
+The below simulates data under a normal model with the same mean and variance as 'SimSynthData_SparseLSparseB_Ind_Neutrophils_Original' above. I want to see if the effect I am seeing is being caused by the size of teh cell type confounders or if it has something to do with the change in variance.
+```{r SimSynthData_Neutrophils_Normal}
+set.seed(1988)
+n.sim <- 100   #Number of individuals
+r.sim <- 0     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(1, 1, 0.7)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+
+SimData <- Sim.Data_Normal(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
+```
+
+It appears that the phenomenon I am observing is ONLY due to the size of the confounding with respect to $L$ (if I make the effect for $L$ small and increase the sample size (or decrease the residual variance, they have the same effect), CATE does terribly). It does not depend on the factor analysis method that is used (I tried all 3 that were available in CATE). It has nothing to do with the additional confounders (I simulated data with $r = 0$ and got an answer that was just as bad).
+
+I think CATE is having a difficult time estimating $L$ for a certain type of confounding. Run the above code with $r_{\text{sim}} = 0$ before running the below code.
+
+With only a single cell type confounder, we want to find the scalar $R$ such that minimizes $\Vert L - \Gamma_{\text{cate}}R \Vert_F^2$, which is $\hat{R} = \left( \Gamma_{\text{cate}}^T \Gamma_{\text{cate}} \right)^{-1} \Gamma_{\text{cate}}^T L$. For a perfect estimate of the subspace generated by $L$, $\Vert L - \Gamma_{\text{cate}}R \Vert_F^2 = 0$.
+
+```{r InvestigateL}
+Gamma.cate <- as.vector(analyzed.data$cate.nocell$Gamma)
+Gamma.cell <- L.sim[,3]
+#ind.nonzero <- which(Gamma.cell != 0)
+#Gamma.cate <- Gamma.cate[ind.nonzero]
+#Gamma.cell <- Gamma.cell[ind.nonzero]
+#Gamma.cell <- cbind(analyzed.data$Effects.cell[,5])
+R.inner <- 1/sum( Gamma.cate * Gamma.cate ) * sum( Gamma.cate * Gamma.cell )
+diff <- Gamma.cell - Gamma.cate * R.inner
+sqrt(sum(diff * diff))
+#plot(Gamma.cell, Gamma.cate * R.inner)
+
+Gamma.cell.est <- analyzed.data$Effects.cell[,5]
+Gamma.cell <- L.sim[,3]
+#ind.nonzero <- which(Gamma.cell != 0)
+#Gamma.cell.est <- Gamma.cell.est[ind.nonzero]
+#Gamma.cell <- Gamma.cell[ind.nonzero]
+R.inner <- 1/sum( Gamma.cell.est * Gamma.cell.est ) * sum( Gamma.cell.est * Gamma.cell )
+diff <- Gamma.cell - Gamma.cell.est * R.inner
+sqrt(sum(diff * diff))
+#plot(Gamma.cell, Gamma.cell.est * R.inner)
+```
+
+Based on these results, the estimate for $L$ seems to be as good as we would do for OLS.
+
+```{r CorrConfounders}
+alpha.est <- analyzed.data$cate.nocell$alpha
+Omega.data <- t(solve(t(X.sim) %*% X.sim) %*% t(X.sim) %*% C.sim)    #An estimate of the true correlation between the cell type confounders and primary variable of interest
+Mean.conf.true <- L.sim %*% Omega.data      #The true mean confounder effect
+Mean.conf.cell <- analyzed.data$Effects.cell[,c(4,6,5)] %*% Omega.data    #Est. mean confounder effect, with cell type information
+Mean.conf.est <- analyzed.data$cate.nocell$Gamma %*% alpha.est
+
+plot(Mean.conf.true[,3], Mean.conf.est[,2], xlab="Mean of the True Confounder", ylab="Mean of the Estimated Confounder WITHOUT Cell Type"); abline(a=0,b=1,col="red")
+plot(Mean.conf.cell[,3], Mean.conf.est[,2], xlab="Mean of Estimated Confounder WITH Cell Type", ylab="Mean of the Estimated Confounder WITHOUT Cell Type"); abline(a=0,b=1,col="red")
+```
+
+Huber's loss function is underestimating the correlation and treating the missed correlation as residual. This only happens for small $L$:
+
+Suppose the $i^{\text{th}}$ row of $L$ is $\left( 0, 0, \ell \right)^T$ and the confounding for the $i^{\text{th}}$ site is $\ell \omega^T X + \ell R^T W$, where $R \in \mathbb{R}^{3 \times 1}$ and $W \sim MN_{K=3 \times n}\left( 0, I_K, I_n \right)$. The confounding is therefore
+\[
+\ell \Vert R \Vert_2 \left[ \frac{1}{\Vert R \Vert_2} \omega^T X + N\left( 0,I_n \right) \right].
+\]
+If $\Vert R \Vert_2$ and $\ell$ are small, the confounding effect $\ell \Vert R \Vert_2$ is small, but the correlation is $\frac{1}{\Vert R \Vert_2} \omega$ is large. For some reason when $\ell$ is small, the robust regression CATE is using cannot handle large correlation. 
+
+The asymptotic theory for $L$ when cell type is unobserved is given in terms of $\ell \Vert R \Vert_2$. When $X$ and cell type are highly correlated, $\Vert R \Vert_2$ is small, meaning $\ell \Vert R \Vert_2$ is small. Therefore, the coefficient of variation for $\ell \Vert R \Vert_2$ is small and we would estimate $\frac{1}{\Vert R \Vert_2} \omega$ to be far smaller than it actually is (regression towards the mean).
 
 
 ## Session information

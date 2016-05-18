@@ -12,3 +12,7 @@ title: "Home"
 *  [Investigate Cell Type Models](InvestigateCellType.html)
 
 *  [Simulate Cell Type Confounding](SimulateCellTypeConfounding.html)
+
+## Simulate Data with Correlated Confounders
+
+*  [Why Robust Regression can Fail](AmishHutterite_CellType.html)
