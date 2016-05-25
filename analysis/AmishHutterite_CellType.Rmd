@@ -1539,7 +1539,65 @@ Suppose the $i^{\text{th}}$ row of $L$ is $\left( 0, 0, \ell \right)^T$ and the 
 \]
 If $\Vert R \Vert_2$ and $\ell$ are small, the confounding effect $\ell \Vert R \Vert_2$ is small, but the correlation is $\frac{1}{\Vert R \Vert_2} \omega$ is large. For some reason when $\ell$ is small, the robust regression CATE is using cannot handle large correlation. 
 
-The asymptotic theory for $L$ when cell type is unobserved is given in terms of $\ell \Vert R \Vert_2$. When $X$ and cell type are highly correlated, $\Vert R \Vert_2$ is small, meaning $\ell \Vert R \Vert_2$ is small. Therefore, the coefficient of variation for $\ell \Vert R \Vert_2$ is small and we would estimate $\frac{1}{\Vert R \Vert_2} \omega$ to be far smaller than it actually is (regression towards the mean).
+The asymptotic theory for $L$ when cell type is unobserved is given in terms of $\ell \Vert R \Vert_2$. When $X$ and cell type are highly correlated, $\Vert R \Vert_2$ is small, meaning $\ell \Vert R \Vert_2$ is small. Therefore, the coefficient of variation for $\ell \Vert R \Vert_2$ is small and we would estimate $\frac{1}{\Vert R \Vert_2} \omega$ to be far smaller than it actually is (regression towards the mean). I confirmed this by performing OLS with $\tilde{Y} \sim \hat{\Gamma}$ with cate output:
+
+```{r RegressionTowardMean}
+Q.tmp <- qr.Q(qr(X.sim), complete=T)
+R.tmp <- qr.R(qr(X.sim))
+Y.tilde.sim <- M.sim %*% Q
+alpha.ols <- 1/sum(analyzed.data$cate.nocell$Gamma * analyzed.data$cate.nocell$Gamma) * sum(analyzed.data$cate.nocell$Gamma * (Y.tilde.sim[,1:3] %*% solve(t(R.tmp)))[,3])
+plot(Mean.conf.true[,3], alpha.ols * analyzed.data$cate.nocell$Gamma, xlab="Mean of the True Confounder", ylab="Mean of the Confounder WITHOUT Cell Type Est. with OLS"); abline(a=0,b=1,col="red")
+```
+
+## Penalized Robust Regression
+Below I will attempt to correct the underestimation in $\alpha$ by using a penalized robust regression. The loss function I will minimize is
+\[
+l(\alpha) = \sum\limits_{j=1}^p \rho\left( \frac{\tilde{Y}_j - \hat{\Gamma}_j^T \alpha}{\hat{\sigma}_j} \right) + \frac{q}{2} \left( \alpha - \hat{\Omega} \right)^T V^{-1}\left( \alpha - \hat{\Omega} \right)
+\]
+where $\hat{\Omega}$ was estimated via quasi-likelihood and $V = \mathcal{I}\left( \hat{\Omega} \right)^{-1}$. For $q = 1$, this is akin to finding the maximum aposteriori estimate for $\alpha$ (Bayesian central limit theorem).
+
+
+The below R code is a proof of principle of the above concept. I just want to see if we can get a better estimate of $\alpha$ by using cell type training data at this step.
+```{r PenHuber_POP}
+Gamma.hub <- analyzed.data$cate.nocell$Gamma
+Omega.hub <- t(solve(t(X.sim) %*% X.sim) %*% t(X.sim) %*% C.sim)
+V.x.hub <- solve(t(X.sim) %*% X.sim)    #Int, Cov1, Cov2 (I am interested in Cov2)
+V.obs.hub <- 1/(n.sim - d.sim - 1) * t(C.sim - X.sim %*% t(Omega.sim)) %*% (C.sim - X.sim %*% t(Omega.sim))
+inv.V.total <- kronecker(t(X.sim) %*% X.sim, solve(V.obs.hub))     #(d+1)K x (d+1)K matrix. It runs in blocks of size K x K
+inv.V.use <- inv.V.total[9,9]    #r = 1 for now
+
+Y.tilde.hub <- M.sim %*% Q.tmp
+Y.tilde.hub.use <- Y.tilde.hub[,1:(d.sim+1)] %*% solve(t(R.tmp))    #I want Cov2, which is column 3
+
+alpha.penalized.oracle <- Pen.Huber(Y.tilde.hub.use[,3], sqrt(analyzed.data$cate.nocell$Sigma), cbind(analyzed.data$Effects.cell[,5]), matrix(Omega.data[3,d.sim+1], nrow=1, ncol=1), matrix(inv.V.use, nrow=1, ncol=1), ind.use=order(-abs(L.sim[,3]))[1:1000], q=1)
+##It looks like we can do far better by choosing only the most informative sites for cell types##
+
+alpha.penalized.est <- Pen.Huber(Y=Y.tilde.hub.use[,3], Sigma=sqrt(analyzed.data$cate.nocell$Sigma), Gamma=cbind(analyzed.data$Effects.cell[,5]), Omega=matrix(Omega.data[3,d.sim+1], nrow=1, ncol=1), inv.V.Omega=matrix(inv.V.use, nrow=1, ncol=1), ind.use=order(analyzed.data$q.neutro$qvalue)[1:1000], q=1)
+##However, those sites are difficult to choose. If our estimate for L is noisy, then q-values are not an appropriate way to choose informative sites.
+```
+If we use only the sites with large non-zero values for $L$ in the robust regression, we do a good job at recovering the true correlation. However, when the estimate for $L$ is noisy (as it will be when robust regression fails), we cannot identify the informative site and this technique fails. Maybe we can use this idea to use sites we know that change to 
+
+
+## When Does RR Fail?
+Here I will study when robust regression fails. Recall that the confounding is
+\[
+\ell \Vert R \Vert_2 \left[ \frac{1}{\Vert R \Vert_2} \omega^T X + N\left( 0,I_n \right) \right].
+\]
+
+Below I will get estimates of the above parameters with the original neutrophil simulation
+```{r NeutroParams}
+sigma.neutro <- sigma.L.sim[3]
+mean.cell <- Omega.sim %*% t(X.sim)    #A K x n matrix
+Var.cell <- 1/(alpha.cell.sim + 1) * ( diag(mean.cell[,1], nrow=nrow(Omega.sim), ncol=nrow(Omega.sim)) - cbind(mean.cell[,1]) %*% rbind(mean.cell[,1]) )
+R.cell <- t(chol(Var.cell))     #RR' = Var.cell => LC = LOmegaX + LRW, W ~ MN(0, I_K, I_n)
+R.neutro <- sqrt(sum(R.cell[3,]^2))
+omega.neutro <- Omega.sim[3,3]
+
+exp.L.size <- sigma.neutro * R.neutro
+exp.noise.size <- sqrt(0.15) / sqrt(n.sim)
+corr.size <- Omega.sim[3,3] / R.neutro
+```
+The really interesting 
 
 
 ## Session information

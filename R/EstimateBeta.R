@@ -405,5 +405,74 @@ SingleFactor <- function(Y, Sigma, r, tol, max.iter) {    #It's assumed Sigma is
 
 
 
+##Penalized Huber's Loss proof of principle##
+#Assume that d = 1, meaning Y is a p x 1 vector
+#Omega is K x d and Gamma is p x K
+#k.hub is the point where the second derivative of Huber's loss function is discontinuous
+#The penalty is q/2 * (alpha - Omega)' inv.V.Omega (apha - Omega)
+#The updates are weighted least squares
 
+Pen.Huber <- function(Y, Sigma, Gamma, Omega, inv.V.Omega, k.hub = 1.345, ind.use=NULL, q = 1, max.iter=1e4, tol=1e-8) {
+	K <- ncol(Gamma)
+	
+	if (! is.null(ind.use)) {
+		Y <- Y[ind.use]
+		Sigma <- Sigma[ind.use]
+		if (K > 1) {
+			Gamma <- Gamma[ind.use,]
+		} else {
+			Gamma <- cbind(Gamma[ind.use])
+		}
+	}
+	Gamma <- Gamma / Sigma
+	Y <- Y / Sigma - Gamma %*% Omega
+	
+	alpha.tilde.0 <- solve( t(Gamma) %*% Gamma + q * inv.V.Omega, t(Gamma) %*% Y)       #Penalized least squares as a starting point
 
+	for (iter in 1:max.iter) {
+		psi.0 <- psi.huber(Y - Gamma %*% alpha.tilde.0, k.hub)
+		if (K == 1) {
+			grad.0 <- q * inv.V.Omega %*% alpha.tilde.0 - sum(Gamma * psi.0)
+			diff <- abs(grad.0)
+		} else {
+			grad.0 <- q * inv.V.Omega %*% alpha.tilde.0 - apply(Gamma * psi.0, 2, sum)
+			diff <- max(abs(grad.0))
+		}
+		if (diff < tol) {
+			return(list(alpha=alpha.tilde.0 + Omega, n.iter=iter, out=1))
+		}
+		
+		weights.0 <- Weights.huber(Y - Gamma %*% alpha.tilde.0, k.hub)
+		tmp.mat <- Gamma * weights.0
+		alpha.tilde.0 <- solve( t(tmp.mat) %*% Gamma + q * inv.V.Omega, t(tmp.mat) %*% Y )
+		if (K == 1) {
+			alpha.tilde.0 <- matrix(alpha.tilde.0, nrow=1, ncol=1)
+		}
+		
+	}
+	return(list(alpha=alpha.0, n.iter=iter, out=0))
+}
+
+psi.huber <- function(x, k) {
+	ind.small <- as.numeric(abs(x) <= k)
+	return( ind.small * x/k + (1 - ind.small) * sign.vec(x) )
+}
+
+Weights.huber <- function(x, k) {
+	ind.small <- as.numeric(abs(x) <= k)
+	return( ind.small * 1/k + (1-ind.small) / abs(x) )
+}
+
+sign.vec <- function(x) {
+	return( as.numeric( x > 0 ) - as.numeric( x < 0 ) )
+}
+
+rho.huber <- function(x, k) {
+	ind.small <- abs(x) <= k
+	return( sum(1/2/k * x[ind.small]^2) + sum(abs(x[!ind.small]) - k/2) )
+}
+
+fun.value <- function(x, k, diff, inv.V, q) {
+	return( (rho.huber(x, k) + q/2 * t(diff) %*% inv.V %*% diff)/p )
+}
+ 

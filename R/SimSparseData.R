@@ -103,6 +103,9 @@ AnalyzeData <- function(M.sim, data.sim, r.cell, r.nocell, B.sim, L.sim) {
 	fsr.cell.2 <- false.sign.results(B.sim[,2], B.est.cell.sim[,3], q.cell.2.sim$qvalue)
 	#plot(sort(q.cell.2.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", type="l", main="FDR Plot WITHOUT Cell Type for Cov2")
 	#plot(fsr.cell.2$fdr, fsr.cell.2$power, type="l")
+  Zscores.cell.types.sim <- (B.est.cell.sim[,4:6] %*% diag(1/sqrt(diag(Var.row.cell.sim[4:6,4:6]))))/sqrt(Sigma.cell.sim)
+  P.values.cell.types.sim <- 2 - 2 * pt( abs(Zscores.cell.types.sim), df=n.sim-d.cell.sim )
+  q.cell.neutro.sim <- qvalue(P.values.cell.types.sim[,2])
 	
 	##Summarize Results
 	plot(sort(q.cell.2.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", main=paste0("FDR Plot With and Without Cell Type, sigma.L = ", paste(as.character(round(100*sigma.L.sim)/100), collapse=",")), type="l")
@@ -115,7 +118,7 @@ AnalyzeData <- function(M.sim, data.sim, r.cell, r.nocell, B.sim, L.sim) {
 	ind.nonzero.L <- which(L.sim[,1] != 0)
 	out.mat <- rbind(c( sum((B.est.cell.sim[ind.nonzero.B, 3] - B.sim[ind.nonzero.B, 2])^2), sum((B.est.nocell.sim[ind.nonzero.B, 3] - B.sim[ind.nonzero.B, 2])^2), sum((B.est.cell.sim[ind.nonzero.L, 3] - B.sim[ind.nonzero.L, 2])^2),  sum((B.est.nocell.sim[ind.nonzero.L, 3] - B.sim[ind.nonzero.L, 2])^2), length(ind.nonzero.B), length(ind.nonzero.L)))
 	colnames(out.mat) <- c("B2 non-zero Cell Risk", "B2 non-zero noCell Risk", "B2 L1non-zero Cell Risk", "B2 L1non-zero noCell Risk", "n_nonzeroB2", "n_nonzeroL1")
-	return( list(risk.mat=out.mat, Effects.cell=B.est.cell.sim, Effects.nocell=B.est.nocell.sim, fsr.cell=fsr.cell.2, fsr.nocell=fsr.nocell.2, q.cell=q.cell.2.sim, q.nocell=q.nocell.2.sim, cate.nocell=cate.nocell.sim, cate.cell=cate.cell.sim) )
+	return( list(risk.mat=out.mat, Effects.cell=B.est.cell.sim, Effects.nocell=B.est.nocell.sim, fsr.cell=fsr.cell.2, fsr.nocell=fsr.nocell.2, q.cell=q.cell.2.sim, q.nocell=q.nocell.2.sim, cate.nocell=cate.nocell.sim, cate.cell=cate.cell.sim, q.neutro=q.cell.neutro.sim) )
 }
 
 

@@ -1,0 +1,13 @@
+adjust.latent           Adjust for latent factors, after rotationn
+cate                    The main function for confounder adjusted
+                        testing
+cate-package            High dimensional factor analysis and confounder
+                        adjusted testing and estimation (CATE)
+est.confounder.num      Estimate the number of confounders
+fa.em                   Factor analysis via EM algorithm to maximize
+                        likelihood
+fa.pc                   Factor analysis via principal components
+factor.analysis         Factor analysis
+gen.sim.data            Generate simulation data set
+gender.sm               Gender study dataset
+wrapper                 Wrapper functions for some previous methods
