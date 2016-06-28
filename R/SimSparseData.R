@@ -24,7 +24,11 @@ Sim.Data <- function(n, r, p, pi0.B, pi0.L, ind.BL, sigma.B, sigma.L, sigma.conf
 		c.i <- mean.cell[,i]
 		C[i,] <- rdirichlet(1, alpha.cell * c(c.i, 1-sum(c.i)))[1:K]
 	}
-	Y <- B %*% t(X[,2:(d+1)]) + L %*% t(C) + Gamma %*% matrix(rnorm(r*n), nrow=r, ncol=n) + matrix(rnorm(n*p), nrow=p, ncol=n) * sqrt(Sigma)
+	if (r > 0) {
+	  Y <- B %*% t(X[,2:(d+1)]) + L %*% t(C) + Gamma %*% matrix(rnorm(r*n), nrow=r, ncol=n) + matrix(rnorm(n*p), nrow=p, ncol=n) * sqrt(Sigma)
+	} else {
+	  Y <- B %*% t(X[,2:(d+1)]) + L %*% t(C) + matrix(rnorm(n*p), nrow=p, ncol=n) * sqrt(Sigma)
+	}
 	return(list(M.sim=Y, C.sim=C, X.sim=X, Gamma.sim=Gamma, B.sim=B, L.sim=L, Sigma.sim=Sigma))
 }
 
@@ -108,7 +112,7 @@ AnalyzeData <- function(M.sim, data.sim, r.cell, r.nocell, B.sim, L.sim) {
   q.cell.neutro.sim <- qvalue(P.values.cell.types.sim[,2])
 	
 	##Summarize Results
-	plot(sort(q.cell.2.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", main=paste0("FDR Plot With and Without Cell Type, sigma.L = ", paste(as.character(round(100*sigma.L.sim)/100), collapse=",")), type="l")
+	plot(sort(q.cell.2.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", main="FDR Plot With and Without Cell Type", type="l")
 	lines(sort(q.nocell.2.sim$qvalue), fsr.nocell.2$fdr, col="red")
 	legend("bottomright", legend=c("With Cell", "Without Cell"), fill=c("black", "red"))
 	abline(a=0,b=1, col="violet")
@@ -124,7 +128,7 @@ AnalyzeData <- function(M.sim, data.sim, r.cell, r.nocell, B.sim, L.sim) {
 
 ##This data analyzes data from a SINGLE covariate of interest##
 
-AnalyzeData2 <- function(M.sim, data.sim, r.cell, r.nocell, B.sim, L.sim) {
+AnalyzeData2 <- function(M.sim, data.sim, r.cell, r.nocell, B.sim, L.sim, plotit=T) {
 	cate.nocell.sim <- cate(~Cov1, X.data=data.sim, Y=t(M.sim), r=r.nocell, fa.method="ml", adj.method="rr", calibrate=F)
 	n.sim <- nrow(data.sim)
 	Z.nocell.sim <- cate.nocell.sim$Z
@@ -164,10 +168,12 @@ AnalyzeData2 <- function(M.sim, data.sim, r.cell, r.nocell, B.sim, L.sim) {
 	#plot(fsr.cell.2$fdr, fsr.cell.2$power, type="l")
 	
 	##Summarize Results
-	plot(sort(q.cell.1.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", main=paste0("FDR Plot With and Without Cell Type, sigma.L = ", paste(as.character(round(100*sigma.L.sim)/100), collapse=",")), type="l")
-	lines(sort(q.nocell.1.sim$qvalue), fsr.nocell.2$fdr, col="red")
-	legend("bottomright", legend=c("With Cell", "Without Cell"), fill=c("black", "red"))
-	abline(a=0,b=1, col="violet")
+  if (plotit) {
+    plot(sort(q.cell.1.sim$qvalue), fsr.cell.2$fdr, xlab="Est. Q-value", ylab="True FDR", main="FDR Plot With and Without Cell Type", type="l", xlim=c(0,0.3), ylim=c(0,0.3))
+    lines(sort(q.nocell.1.sim$qvalue), fsr.nocell.2$fdr, col="red")
+    legend("bottomright", legend=c("With Cell", "Without Cell"), fill=c("black", "red"))
+    abline(a=0,b=1, col="violet")
+  }
 	
 	return( list(Effects.cell=B.est.cell.sim, Effects.nocell=B.est.nocell.sim, fsr.cell=fsr.cell.2, fsr.nocell=fsr.nocell.2, q.cell=q.cell.1.sim, q.nocell=q.nocell.1.sim, cate.nocell=cate.nocell.sim, cate.cell=cate.cell.sim) )
 }

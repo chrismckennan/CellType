@@ -453,6 +453,8 @@ Pen.Huber <- function(Y, Sigma, Gamma, Omega, inv.V.Omega, k.hub = 1.345, ind.us
 	return(list(alpha=alpha.0, n.iter=iter, out=0))
 }
 
+
+
 psi.huber <- function(x, k) {
 	ind.small <- as.numeric(abs(x) <= k)
 	return( ind.small * x/k + (1 - ind.small) * sign.vec(x) )
