@@ -1,0 +1,605 @@
+\documentclass{article}
+
+\usepackage{enumerate}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bbm}
+\usepackage{graphicx}
+\usepackage[english]{babel}
+\usepackage[letterpaper, portrait, margin=1.0in]{geometry}
+\graphicspath{ {~/Desktop/Uchicago/STAT_347/HW/HW2/QuestionA3} }
+\usepackage{mathrsfs}
+\usepackage{breqn}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{txfonts}
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+\usepackage{units}
+\DeclareMathOperator{\Tr}{Tr}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\usepackage{setspace}
+\newcommand{\indep}{\rotatebox[origin=c]{90}{$\models$}}
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}%
+\DeclarePairedDelimiter\norm{\lVert}{\rVert}%
+
+% Swap the definition of \abs* and \norm*, so that \abs
+% and \norm resizes the size of the brackets, and the 
+% starred version does not.
+\makeatletter
+\let\oldabs\abs
+\def\abs{\@ifstar{\oldabs}{\oldabs*}}
+%
+\let\oldnorm\norm
+\def\norm{\@ifstar{\oldnorm}{\oldnorm*}}
+\makeatother
+
+\begin{document}
+
+\section{Model 1}
+
+Suppose we have cell type data $C$ for $n_1$ of the individuals and no cell type data for the other $n_2$ individuals. The models is then
+\[
+Y_1 = BX_1 + LC + \Gamma\alpha X_1 + \Gamma W_1 + E_1
+\]
+\[
+Y_2 = BX_2 + LD\Xi + L\Omega X_2 + \Gamma \alpha X_2 + \Gamma W_2 + E_2
+\]
+where $DD^T = \Lambda$, $W_i \sim MN_{r \times n_i}\left( 0, I_r, I_{n_i} \right)$, $\Xi \sim MN_{K \times n_2}\left( 0, I_K, I_{n_2} \right)$, $E_i \sim MN_{p \times n_i}\left( 0, \Sigma, I_{n_i} \right)$. Let $X_i^T = Q_i R_i$, $Q_i = \left[\begin{matrix}
+Q_i^{(1)} & Q_i^{(2)}
+\end{matrix}\right]$, $Z_i = Y_i Q_i$. Then
+\[
+Z_1^{(1)} = \left( B + \Gamma \alpha \right) R_1 + L\underbrace{CQ_1^{(1)}}_{F_1} + \Gamma \tilde{W}_1^{(1)} + \tilde{E}_1^{(1)} \in \mathbb{R}^{p \times d} \quad \bm{(1)}
+\]
+\[
+Z_1^{(2)} = L\underbrace{CQ_1^{(2)}}_{F_2} + \Gamma \tilde{W}_1^{(2)} + \tilde{E}_1^{(2)} \in \mathbb{R}^{p \times \left( n_1 - d \right)} \quad \bm{(2)}
+\]
+\[
+Z_2^{(1)} = \left( B + \Gamma \alpha + L\Omega \right) R_2 + LD\tilde{\Xi}^{(1)} + \Gamma \tilde{W}_2^{(1)} + \tilde{E}_2^{(1)} \in \mathbb{R}^{p \times d} \quad \bm{(3)}
+\]
+\[
+Z_2^{(2)} = LD\tilde{\Xi}^{(2)} + \Gamma \tilde{W}_2^{(2)} + \tilde{E}_2^{(2)} \in \mathbb{R}^{p \times \left( n_2 - d \right)} \quad \bm{(4)}.
+\]
+
+I will use $\bm{(2)}$ and $\bm{(4)}$ to estimate $L, \Gamma, \Lambda, \Sigma$.
+
+\subsection{Preliminary Identities}
+Let $\Psi = \Sigma + \Gamma\Gamma^T$ and $J = L\Lambda L^T + \Psi$. For notation purposes, I will let $Z_1 = Z_1^{(2)}$, $Z_2 = Z_2^{(2)}$, $S_i = Z_i Z_i^T$, $F = F_2$ and $m_i = n_i - d$.
+\[
+\Psi^{-1} = \left( \Sigma + \Gamma\Gamma^T \right)^{-1} = \Sigma^{-1} - \Sigma^{-1}\Gamma\left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}
+\]
+\[
+J^{-1} = \left( \Psi + L\Lambda L^T \right)^{-1} = \Psi^{-1} - \Psi^{-1}L\left( \Lambda^{-1} + L^T \Psi^{-1} L \right)^{-1} L^T \Psi^{-1}
+\]
+
+For the subsequent analysis, I need to be able to compute the following matrices:
+\begin{enumerate}
+\item \[
+\text{LtSinvZ} = L^T \Sigma^{-1}Z_2
+\]
+\item \[
+\text{LtSinvG} = L^T \Sigma^{-1} \Gamma
+\]
+\item \[
+\text{GtSinvG} = \Gamma^T \Sigma^{-1} \Gamma
+\]
+\item \[
+\text{GtSinvZ} = \Gamma^T \Sigma^{-1} Z_2
+\]
+\item \[
+\text{LtSinvL} = L^T \Sigma^{-1}L
+\]
+\item \[
+\text{AtSinvG} = A^T \Sigma^{-1}\Gamma
+\]
+\item \[
+\text{mid.r} = I_r + \text{GtSinvG}
+\]
+\item \[
+\text{mid.Lambda} = \Lambda^{-1} + H_2
+\]
+\end{enumerate}
+
+Using the above Woodbury identities, we need to compute the following matrices:
+\begin{enumerate}
+\item \[
+H_1 = L^T \Psi^{-1}Z_2 = L^T\Sigma^{-1}Z_2 - L^T\Sigma^{-1}\Gamma\left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}Z_2
+\]
+\item \[
+H_2 = L^T \Psi^{-1}L = L^T\Sigma^{-1}L - L^T\Sigma^{-1}\Gamma\left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}L
+\]
+\item \[
+H_3 = A^T \Psi^{-1}\Gamma = A^T\Sigma^{-1}\Gamma - A^T\Sigma^{-1}\Gamma\left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}\Gamma
+\]
+\item \[
+H_4 = Z_2^T \Psi^{-1}\Gamma = Z_2^T\Sigma^{-1}\Gamma - Z_2^T\Sigma^{-1}\Gamma\left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}\Gamma
+\]
+\item \[
+H_5 = L^T \Psi^{-1}\Gamma = L^T\Sigma^{-1}\Gamma - L^T\Sigma^{-1}\Gamma\left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}\Gamma
+\]
+\item \[
+H_6 = \Gamma^T \Psi^{-1} \Gamma = \Gamma^T\Sigma^{-1}\Gamma - \Gamma^T\Sigma^{-1}\Gamma\left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}\Gamma
+\]
+\item \[
+H_7 = L^T \Psi^{-1}Z_1 = L^T\Sigma^{-1}Z_1 - L^T\Sigma^{-1}\Gamma\left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}Z_1
+\]
+
+\end{enumerate}
+
+Using the above identities, we need to compute the following matrices:
+\begin{enumerate}
+\item \[
+G_1 = L^T J^{-1} Z_2 = L^T \Psi^{-1} Z_2 - L^T \Psi^{-1}L \left( \Lambda^{-1} + L^T \Psi^{-1} L \right)^{-1} L^T \Psi^{-1} Z_2 = H_1 - H_2 \left( \Lambda^{-1} + H_2 \right)^{-1} H_1
+\]
+\[
+= H_1 - H_2 D \left( I_K + D^T H_2 D \right)^{-1}D^T H_1
+\]
+which is used in $L, \Lambda, \Gamma, \Sigma$.
+\item \[
+G_2 = L^T J^{-1}L = L^T \Psi^{-1} L - L^T \Psi^{-1}L \left( \Lambda^{-1} + L^T \Psi^{-1} L \right)^{-1} L^T \Psi^{-1} L = H_2 - H_2 \left( \Lambda^{-1} + H_2 \right)^{-1} H_2
+\]
+\[
+= H_2 - H_2 D \left( I_K + D^T H_2 D \right)^{-1}D^T H_2
+\]
+which is used in $L, \Lambda, \Sigma$.
+\item \[
+G_3 = A^T \Psi^{-1}\Gamma = H_3
+\]
+which is used in $\Gamma, \Sigma$.
+\item \[
+G_4 = Z_2^T J^{-1}\Gamma =Z_2^T \Psi^{-1} \Gamma - Z_2^T \Psi^{-1}L \left( \Lambda^{-1} + L^T \Psi^{-1} L \right)^{-1} L^T \Psi^{-1} \Gamma = H_4 - H_1^T \left( \Lambda^{-1} + H_2 \right)^{-1}H_5
+\]
+\[
+= H_4 - H_1^T D \left( I_K + D^T H_2 D \right)^{-1}D^T H_5
+\]
+which is used in $\Gamma, \Sigma$.
+\item \[
+G_5 = L^T J^{-1}\Gamma = L^T \Psi^{-1} \Gamma - L^T \Psi^{-1}L \left( \Lambda^{-1} + L^T \Psi^{-1} L \right)^{-1} L^T \Psi^{-1} \Gamma = H_5 - H_2\left( \Lambda^{-1} + H_2 \right)^{-1} H_5
+\]
+\[
+= H_5 - H_2 D \left( I_K + D^T H_2 D \right)^{-1}D^T H_5 
+\]
+which is used in $\Gamma, \Sigma$.
+\item \[
+G_6 = \Gamma^T \Psi^{-1}\Gamma = H_6
+\]
+which is used in $\Gamma, \Sigma$.
+\item \[
+G_7 = \Gamma^T J^{-1}\Gamma = \Gamma^T \Psi^{-1} \Gamma - \Gamma^T \Psi^{-1}L \left( \Lambda^{-1} + L^T \Psi^{-1} L \right)^{-1} L^T \Psi^{-1} \Gamma = H_6 - H_5^T\left( \Lambda^{-1} + H_2 \right)^{-1} H_5
+\]
+\[
+= H_6 - H_5^T D \left( I_K + D^T H_2 D \right)^{-1}D^T H_5
+\]
+which is used in $\Gamma, \Sigma$.
+\end{enumerate}
+
+
+\subsection{Update for $L$}
+Assume $\Gamma, \Lambda, \Sigma$ are known. We then have
+\[
+\tilde{\Xi}^{(2)} \mid Z_2 \sim MN_{K \times m_2}\left( D^T L^T J^{-1} Z_2, I_K - D^T L^T J^{-1}LD, I_{m_2}  \right)
+\]
+\[
+g_1\left( L \right) = \log f\left( Z_1 \mid L \right) = \frac{m_1}{2} \log \abs{\Psi^{-1}} - \frac{1}{2}\Tr\left( \Psi^{-1}S_1 \right) + \Tr\left( L^T \Psi^{-1}Y_1 F^T \right) - \frac{1}{2}\Tr\left( L^T \Psi^{-1}LFF^T \right)
+\]
+\[
+g_2\left( L \right) = E_{\tilde{\Xi}^{(2)} \mid Z_2, L_{t}} \log f\left( Z_2 \mid L, \tilde{\Xi}^{(2)} \right) = \frac{m_2}{2}\abs{\Psi^{-1}} - \frac{1}{2}\Tr\left( \Psi^{-1}S_2 \right) + \Tr\left( L^T \Psi^{-1}S_2J_t^{-1}L_t\Lambda \right)
+\]
+\[
+-\frac{1}{2}\Tr\left[ L^T \Psi^{-1}L \left( \Lambda L_t^T J_t^{-1} S_2 J_t^{-1} L_t \Lambda + m_2 \left\lbrace \Lambda - \Lambda L_t^T J^{-1}_t L_t \Lambda \right\rbrace \right) \right]
+\]
+\[
+\Rightarrow 0 = \frac{dg_1}{dL} + \frac{dg_2}{dL} = \Psi^{-1} Z_1 F^T - \Psi^{-1} LFF^T + \Psi^{-1}S_2 J_t^{-1}L_t \Lambda - \Psi^{-1}L\left( \Lambda L_t^T J_t^{-1} S_2 J_t^{-1} L_t \Lambda + m_2 \left\lbrace \Lambda - \Lambda L_t^T J^{-1}_t L_t \Lambda \right\rbrace \right)
+\]
+The update for $L$ is then:
+\[
+L = MU^{-1}
+\]
+\[
+M = Z_1F^T + S_2 J_t^{-1}L_t\Lambda = Z_1F^T + Z_2 G_1^T \Lambda
+\]
+\[
+U = FF^T + \Lambda L_t^T J_t^{-1} S_2 J_t^{-1} L_t \Lambda + m_2 \left\lbrace \Lambda - \Lambda L_t^T J^{-1}_t L_t \Lambda \right\rbrace = FF^T + \Lambda G_1 G_1^T \Lambda + m_2 \left\lbrace \Lambda - \Lambda G_2 \Lambda \right\rbrace
+\]
+I then need to update $H_1, H_2, H_3, H_5$ and then $G_1, G_2, G_3, G_4, G_5, G_7$ and then $A$.
+
+\subsection{Update for $\Lambda$}
+Assume that $L, \Gamma, \Sigma$ are known. Let $V = D\tilde{\Xi}^{(2)} \sim MN_{K \times m_2}\left( 0, \Lambda, I_{m_2} \right)$. Then
+\[
+E_{V \mid Z_2, \Lambda_t}\log f\left( V \mid \Lambda \right) = \frac{m_2}{2}\log \abs{\Lambda^{-1}} - \frac{1}{2}\Tr\left[ \Lambda^{-1}\left( \Lambda_t L^T J_t^{-1}S_2 J_t^{-1} L \Lambda_t + m_2\left\lbrace \Lambda_t - \Lambda_t L^T J^{-1}_t L \Lambda_t \right\rbrace \right) \right]
+\]
+The update for $\Lambda$ is then
+\[
+\Lambda = \frac{1}{m_2} \Lambda_t L^T J_t^{-1}S_2 J_t^{-1} L \Lambda_t + \Lambda_t - \Lambda_t L^T J^{-1}_t L \Lambda_t = \frac{1}{m_2} \Lambda_t G_1 G_1^T \Lambda_t + \Lambda_t - \Lambda_t G_2 \Lambda_t
+\]
+I then need to update $G_1, G_2, G_4, G_5, G_7$.\\
+\\
+It turns out this does not work and often times gives updates that are not positive definite. The better option is to update $D$ directly by using the second set of data:
+\[
+\log f\left( Z_2 \mid V, D \right) = -\frac{m_2}{2} \log \abs{\psi} - \frac{1}{2}\Tr\left[ \left( Z_2 - LD\Xi_2 \right)^T\Psi^{-1} \left( Z_2 - LD\Xi_2 \right) \right] =
+\]
+\[
+-\frac{m_2}{2} \log \abs{\psi} - \frac{1}{2}\Tr\left[ \Psi^{-1} Z_2 Z_2^T \right] + \Tr\left[ \Xi_2^T D^T L^T \Psi^{-1} Z_2 \right] - \frac{1}{2} \Tr\left[ \Xi_2^T D^T L^T \Psi^{-1} LD\Xi_2 \right]
+\]
+Using this, the update is then
+\[
+D = \left( L^T \Psi^{-1}L \right)^{-1} L^T \Psi^{-1}Z_2 E\left( \Xi_2^T \mid Z_2 \right) E\left( \Xi_2\Xi_2^T \mid Z_2 \right)^{-1} = MU^{\dag}
+\]
+\[
+M = H_2^{-1}H_1G_1^T D_t
+\]
+\[
+U = D_t^T G_1G_1^T D_t + m_2\left\lbrace I_K - D_t^T G_2 D_t \right\rbrace
+\]
+where is $U$ is invertible, $U^{\dag} = U^{-1}$. Note that $U^{\dag} = V D_*^{\dag}V^T$ where $U = VD_* V^T$ is the SVD of $U$.\\
+\\
+This update for $D$ also does not work. It may be best to optimize $\Lambda$ directly from the likelihood function, given $L, \Gamma, \Sigma$. The likelihood function is
+\[
+f\left( \Lambda \right) = -ll\left( \Lambda \right) = \frac{m_2}{2} \log \abs{\Psi + L \Lambda L^T} + \frac{1}{2}\Tr\left[ S_2\left( \Psi + L\Lambda L^T \right)^{-1} \right]
+\]
+and the minimization we want to perform is
+\[
+\min_{\Lambda \succeq \bm{\epsilon}} f\left( \Lambda \right) = \min_{\tilde{\Lambda} \succeq 0} f\left( \tilde{\Lambda} + \bm{\epsilon} \right) = \min_{\tilde{\Lambda} \succeq 0} \tilde{f}\left( \tilde{\Lambda} \right), \text{ where } \tilde{\Lambda} = \Lambda - \bm{\epsilon}
+\]
+The Lagrangian for this problem is
+\[
+\mathcal{L}\left( \tilde{\Lambda}, M \right) = \tilde{f}\left( \tilde{\Lambda} \right) - \Tr\left( \tilde{\Lambda} M\right)
+\]
+and
+\[
+\nabla_{\tilde{\Lambda}} \mathcal{L}\left( \tilde{\Lambda}, M \right) = L^T J^{-1}L - \frac{1}{m_2}L^T J^{-1}S_2J^{-1}L - M = G_2 - \frac{1}{m_2}G_1G_1^T - M = g - M.
+\]
+Where $J$ is evaluated at $\Lambda$, NOT $\tilde{\Lambda}$. We know that we have reached a stable point when $G_2 - \frac{1}{m_2}G_1G_1^T = M_* \succeq 0$. Let $\tilde{\Lambda}_* = Q \tilde{D}_* Q^T$. If $M_* = 0$, there is nothing to compute. However, if $M_* \neq 0$, we must have
+\[
+\Tr\left( \tilde{D}_* \tilde{M}_* \right) = 0, \text{ where } \tilde{M}_* = Q^T M_* Q
+\]
+meaning that if $\tilde{d}_{*_k} = 0$, then the $k^{\text{th}}$ row/column of $\tilde{M}_*$ must also me 0.
+
+The Hessian is
+\[
+H \underbrace{=}_{\text{column stacking}} \nabla^2_{\text{vec}\left(\tilde{\Lambda}\right) \text{vec}\left(\tilde{\Lambda}\right)} \mathcal{L}\left( \tilde{\Lambda}, M \right) = \left( \frac{1}{m_2} G_1G_1^T \right)\otimes \left( \frac{1}{m_2} G_1G_1^T \right) - \left[ G_2 - \frac{1}{m_2}G_1G_1^T \right]\otimes \left[ G_2 - \frac{1}{m_2}G_1G_1^T \right]
+\]
+where
+\[
+EH = N = G_2 \otimes G_2.
+\]
+The quadratic subproblem can then be stated as
+\[
+\min_{x_k \succeq 0} \frac{1}{2}\text{vec}\left( x_k - \tilde{\Lambda}_k \right)^T N \text{vec}\left( x_k - \tilde{\Lambda}_k \right) + \text{vec}\left( x_k - \tilde{\Lambda}_k \right)^T \text{vec}\left( g \right)
+\]
+which has unconstrained update
+\[
+\tilde{\Lambda}_{k+1} = x_k =  \tilde{\Lambda}_k -N^{-1} \text{vec}\left( g \right) =\tilde{\Lambda}_k - G_2^{-1} \left( G_2 - \frac{1}{m_2}G_1G_1^T \right) G_2^{-1} =\tilde{\Lambda}_k +  \frac{1}{m_2}G_2^{-1}G_1G_1^T G_2^{-1} - G_2^{-1}
+\]
+It can be shown that the solution to the constrained problem with the approximate Hessian will ALWAYS decrease the function $f$, and is therefore a valid approximation. Unfortunately, Rmosek does not support such an optimization. Instead, I will use BFGS:\\
+\\
+Let $\Lambda = RR^T$, $h_1\left( R \right) = \log \abs{\Psi + LRR^T L^T}$ and $h_2\left( R \right) = \Tr\left[ S_2\left( \Psi + LRR^TL^T \right)^{-1} \right]$. Note that $g = -ll = \frac{m_2}{2}h_1 + \frac{1}{2}h_2$. We also have
+\[
+\frac{dh_1}{dR} = 2L^TJ^{-1}LR = 2G_2R
+\]
+\[
+\frac{dh_2}{dR} = -2G_1G_1^T R
+\]
+and
+\[
+\frac{dg}{dR} = \frac{m_2}{2}\left( G_2R + R^T G_2 \right) - \frac{1}{2}\left( G_1G_1^T R + R^T G_1G_1^T \right).
+\]
+This can then be used as input into the function "optim".
+
+\subsection{Update for $\Gamma$}
+Assume that $L, \Lambda, \Sigma$ are known. Define $A = Z_1 - LF$. Then
+\[
+g_1\left( \Gamma \right) = E_{\tilde{W}_1^{(2)} \mid A, \Gamma_t} \log f\left( A \mid \tilde{W}_1^{(2)} \right) = \frac{m_1}{2}\log \abs{\Sigma^{-1}} - \frac{1}{2}\Tr\left( \Sigma^{-1}AA^T \right) + \Tr\left( \Gamma^T \Sigma^{-1} AA^T \Psi_t^{-1}\Gamma_t \right) - 
+\]
+\[
+\frac{1}{2}\Tr\left[ \Gamma^T \Sigma^{-1}\Gamma\left( \Gamma_t^T \Psi_t^{-1} AA^T \Psi_t^{-1}\Gamma_t + m_1\left\lbrace I_r - \Gamma_t^T \Psi_t^{-1}\Gamma_t \right\rbrace \right) \right]
+\]
+For the next part, first note that
+\[
+\left( \begin{matrix}
+V\\
+\tilde{W}_2^{(2)}
+\end{matrix} \right) \mid Z_2 \sim MN_{\left( K + r \right)\times m_2}\left( \left( \begin{matrix}
+\Lambda L^T\\
+\Gamma^T
+\end{matrix} \right)J^{-1} Z_2, \left( \begin{matrix}
+\Lambda & 0\\
+0 & I_r
+\end{matrix} \right) - \left( \begin{matrix}
+\Lambda L^T\\
+\Gamma^T
+\end{matrix} \right) J^{-1}\left( \begin{matrix}
+L\Lambda & \Gamma
+\end{matrix} \right), I_{m_2} \right)
+\]
+and that
+\[
+\log f\left( Z_2 \mid V, \tilde{W}_2^{(2)} \right) = \frac{m_2}{2}\log\abs{\Sigma^{-1}} - \frac{1}{2}\Tr\left( \Sigma^{-1} S_2 \right) + \Tr\left( V^T L^T \Sigma^{-1} Z_2 \right) + \Tr\left( \tilde{W}_2^{(2)} \Gamma^T \Sigma^{-1}Z_2 \right) - \Tr\left( \tilde{W}_2^{(2)} \Gamma^T \Sigma^{-1}LV \right) - \frac{1}{2}\Tr\left( V^T L^T \Sigma^{-1} L V \right) - 
+\]
+\[
+\frac{1}{2}\Tr\left( \left(\tilde{W}_2^{(2)}\right)^T \Gamma^T \Sigma^{-1} \Gamma \tilde{W}_2^{(2)} \right).
+\]
+Therefore,
+\[
+g_2\left( \Gamma \right) = E_{\left( \begin{matrix}
+V\\
+\tilde{W}_2^{(2)}
+\end{matrix} \right) \mid Z_2} \log f\left( Z_2 \mid V, \tilde{W}_2^{(2)} \right) = \frac{m_2}{2}\log\abs{\Sigma^{-1}} - \frac{1}{2}\Tr\left( \Sigma^{-1} S_2 \right) + \Tr\left( L^T \Sigma^{-1} S_2 J_t^{-1}L\Lambda  \right) + \Tr\left( \Gamma^T \Sigma^{-1} S_2 J_t^{-1}\Gamma_t^T \right) - 
+\]
+\[
+\Tr\left( \Gamma^T \Sigma^{-1} L \left\lbrace \Lambda L^T J_t^{-1} S_2 J_t^{-1} \Gamma_t - m_2 \Lambda L^T J_t^{-1}\Gamma_t \right\rbrace \right) - \frac{1}{2}\Tr\left[ L^T \Sigma^{-1} L\left( \Lambda L^T J_t^{-1} S_2 J_t^{-1} L \Lambda + m_2\left\lbrace \Lambda - \Lambda L^T J_t^{-1} L \Lambda \right\rbrace \right) \right] - 
+\]
+\[
+\frac{1}{2}\Tr\left[ \Gamma^T \Sigma^{-1} \Gamma \left( \Gamma_t^T J_t^{-1} S_2 J_t^{-1} \Gamma_t + m_2\left\lbrace I_r - \Gamma_t^T J_t^{-1} \Gamma_t \right\rbrace \right) \right]
+\]
+Setting $\frac{dg_1}{d\Gamma} + \frac{dg_2}{d\Gamma} = 0$, we find that the update for $\Gamma$ is
+\[
+\Gamma = MU^{-1}
+\]
+\[
+M = AA^T \Psi_t^{-1} \Gamma_t + S_2 J_t^{-1}\Gamma_t - L\left\lbrace \Lambda L^T J_t^{-1} S_2 J_t^{-1} \Gamma_t - m_2\Lambda L^T J_t^{-1}\Gamma_t \right\rbrace = A G_3 + Z_2 G_4 - L\left\lbrace \Lambda G_1 G_4 - m_2 \Lambda G_5 \right\rbrace
+\]
+\[
+U = \left( \Gamma_t^T \Psi_t^{-1}AA^T \Psi_t^{-1}\Gamma_t + m_1\left\lbrace I_r - \Gamma_t^T \Psi_t^{-1}\Gamma_t \right\rbrace \right) + \left( \Gamma_t^T J_t^{-1} S_2 J_t^{-1} \Gamma_t + m_2\left\lbrace I_r - \Gamma_t^T J_t^{-1} \Gamma_t \right\rbrace \right) = G_3^T G_3 + m_1 \left\lbrace I_r - G_6 \right\rbrace + G_4^T G_4 + m_2\left\lbrace I_r - G_7 \right\rbrace.
+\]
+I then need to update $H_1 - H_6$ and then $G_1 - G_7$.
+
+\subsection{Update for $\Sigma$}
+Assume $L$, $\Gamma$, $\Lambda$ are known. Using $g_1$, $g_2$ from above and setting the derivative to 0, the update for $\Sigma = \diag(v)$ is
+\[
+\left( m_1 + m_2 \right)v = \diag\left( AA^T \right) + \diag\left( S_2 \right) - 2\diag\left( AA^T \Psi^{-1}\Gamma\Gamma^T \right) - 2\diag\left( S_2J^{-1}\Gamma\Gamma^T \right) + \diag\left[ \Gamma \left( \Gamma^T \Psi^{-1}AA^T \Psi^{-1}\Gamma + m_1 \left\lbrace I_r - \Gamma^T \Psi^{-1}\Gamma \right\rbrace \right)\Gamma^T \right]
+\]
+\[
++2\diag\left[ L\left( \Lambda L^T J^{-1}S_2 J^{-1}\Gamma - m_2 \Lambda L^T J^{-1}\Gamma \right)\Gamma^T \right] + \diag\left[ \Gamma\left( \Gamma^T J^{-1}S_2 J^{-1}\Gamma + m_2\left\lbrace I_r - \Gamma^T J^{-1}\Gamma \right\rbrace \right)\Gamma^T \right]
+\]
+\[
++\diag\left[ L\left( \Lambda L^T J^{-1}S_2 J^{-1}L\Lambda + m_2\left\lbrace \Lambda - \Lambda L^T J^{-1}L \Lambda \right\rbrace \right)L^T \right] - 2\diag\left( S_2 J^{-1}L\Lambda L^T \right)
+\]
+\[
+= \diag\left( AA^T \right) + \diag\left( S_2 \right) + \diag\left[ \left( \Gamma\left( G_3^T G_3 + m_1\left\lbrace  I_r - G_6 \right\rbrace + G_4^T G_4 + m_2\left\lbrace I_r - G_7 \right\rbrace \right) + 2L\left( \Lambda G_1 G_4 - m_2 \Lambda G_5 \right) - 2AG_3 - 2Z_2 G_4 \right)\Gamma^T \right]
+\]
+\[
++ \diag\left[ \left( L\left( \Lambda G_1 G_1^T \Lambda + m_2\left\lbrace \Lambda - \Lambda G_2 \Lambda \right\rbrace \right) - 2Z_2 G_1^T \Lambda \right)L^T \right].
+\]
+I then need to update $H_1 - H_6$ and $G_1 - G_7$.
+
+\subsection{Compute Likelihood}
+The log-likelihood is
+\[
+l\left( L, \Gamma, \Lambda, \Sigma \mid Z_1, Z_2 \right) = -\frac{m_1}{2}\log \abs{\Psi} - \frac{m_2}{2}\log \abs{J} - \frac{1}{2}\Tr\left( A^T \Psi^{-1}A \right) - \frac{1}{2}\Tr\left( Z_2^T J Z_2 \right) = 
+\]
+\[
+-\left( \frac{m_1 + m_2}{2} \right)\left( \log\abs{I_r + \Gamma^T \Sigma^{-1}\Gamma} + \log\abs{\Sigma} \right) - \frac{m_2}{2}\left[ \log \abs{\Lambda} + \log\abs{\Lambda^{-1} + H_2} \right]
+\]
+\[
+ - \frac{1}{2}\Tr\left( A^T \Sigma^{-1}A \right) + \frac{1}{2}\Tr\left[ A^T\Sigma^{-1}\Gamma \left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}A \right]
+\]
+\[
+ - \frac{1}{2}\Tr\left( Z_2^T \Sigma^{-1}Z_2 \right) + \frac{1}{2}\Tr\left[ Z_2^T\Sigma^{-1}\Gamma \left( I_r + \Gamma^T \Sigma^{-1}\Gamma \right)^{-1}\Gamma^T \Sigma^{-1}Z_2 \right] + \frac{1}{2}\Tr\left[ H_1^T \left( \Lambda^{-1} + H_2 \right)^{-1}H_1 \right]
+\]
+
+\subsection{BLUPs for $V$, $\tilde{W}_1^{(2)}$ and $\tilde{W}_2^{(2)}$}
+Using the above conditional distributions, see that
+\[
+\hat{V} = E\left( V \mid Z_2 \right) = \Lambda L^T J^{-1}Z_2 = \Lambda G_1
+\]
+An estimate for $C_2$ is then
+\[
+\hat{C}_2 = \hat{V}\left( Q_2^{(2)} \right)^T + \Omega X_2
+\]
+\[
+\hat{\tilde{W}}_1^{(2)} = E\left( \tilde{W}_1^{(2)} \mid Z_1 \right) = \Gamma^T \Psi^{-1}\left( Z_1 - LF \right) = G_3^T
+\]
+\[
+\hat{\tilde{W}}_2^{(2)} = E\left( \tilde{W}_2^{(2)} \mid Z_2 \right) = \Gamma^T J^{-1}Z_2 = G_4^T
+\]
+These BLUPs DO NOT work! Another possibility is to get the GLS estimates for $W$ and $\Xi$. Let $P_{F}^{\perp}$ be the orthogonal projection onto the subspace perpendicular to the rows of $F$. An estimate for $\tilde{W}_1^{(2)}$ is
+\[
+\hat{\tilde{W}}_1^{(2)} = \left( \Gamma^T \Sigma^{-1}\Gamma \right)^{-1} \Gamma^T \Sigma^{-1} Z_1 P_F^{\perp}
+\]
+Note that this is orthogonal to $F$. This does not matter, since we are only interested in estimating the subspace spanned by $F$ and $\hat{\tilde{W}}_1^{(2)}$. By the same reasoning, estimates for $V$ and $\tilde{W}_2^{(2)}$ are
+\[
+\left[ \begin{matrix}
+\hat{V}\\
+\hat{\tilde{W}}_2^{(2)}
+\end{matrix} \right] = \left[ \begin{matrix}
+L^T \Sigma^{-1}L & L^T \Sigma^{-1} \Gamma\\
+\Gamma^T \Sigma^{-1}L & \Gamma^T \Sigma^{-1} \Gamma
+\end{matrix} \right]^{-1} \left[ \begin{matrix}
+L^T \Sigma^{-1} Z_2\\
+\Gamma^T \Sigma^{-1}Z_2
+\end{matrix} \right]
+\]
+
+
+\subsection{Starting Points for $L$, $\Lambda$ and $\Gamma$}
+Below are starting points for $L$ and $\Lambda$:
+\[
+L_0 = Z_1 F^T \left( FF^T \right)^{-1}
+\]
+\[
+\Lambda_0 = \frac{1}{m_1} FF^T
+\]
+For $\Gamma$, let $U_1$ be such that $U_1 F^T = 0$ and $\tilde{Z}_1 = Z_1 U_1$. One possible starting point for 
+$\Gamma$ is
+\[
+1) \quad\Gamma_0 = \frac{1}{\sqrt{m_1 - K}} U_{\tilde{Z}_1} D_{\tilde{Z}_1}
+\]
+where ${\tilde{Z}_1} = U_{\tilde{Z}_1} D_{\tilde{Z}_1} V^T_{\tilde{Z}_1}$ is the SVD of ${\tilde{Z}_1}$. The problem with this is that it only uses the data from the first set of individuals. Ideally we would use both to get a better estimate.\\
+\\
+Another way to get a starting point would be to estimate $F_2$, the cell composition for the second set of individuals. Let $\Psi_0 = \Sigma + \Gamma_0 \Gamma_0^T$, where $\Gamma_0$ was estimated as above. The OLS estimate for $F_2$ is $\hat{F}_2 = \left( L_0^T \Psi_0^T L_0 \right)^{-1} L_0^T \Psi_0^{-1} Z_2 = H_{2_0}^{-1} H_{1_0}$. We can then let $U_2$ be such that $U_2 \left[ \begin{matrix}
+F^T\\
+\hat{F}_2^T
+\end{matrix} \right] = 0$ and $\tilde{Z} = \left[ \begin{matrix}
+Z_1 & Z_2
+\end{matrix} \right] U_2$. The starting point for $\Gamma$ is then
+\[
+2) \quad \Gamma_0 = \frac{1}{\sqrt{m_1 + m_2 - K}} U_{\tilde{Z}} D_{\tilde{Z}}
+\]
+
+\subsection{Another Formulation of the Problem}
+Since we do not care about the estimate for $L$, we would like to be able to enjoy the same luxuries as we do when we estimate the latent factors $W$ from the data. The nice part about that is we get to choose the latent dimension. In order to do that I will introduce a matrix $T \in \mathbb{R}^{s \times K}$, where $s < K$ (if $s = K$ the below procedure reduces to exactly what we have above). The model is then
+\[
+Z_1 = L_{p \times s}TF + \Gamma W_1 + E_1
+\]
+\[
+Z_2 = L_{p \times s}\underbrace{V}_{MN_{s \times m_2}\left( 0, \Lambda, I_{m_2} \right)} + \Gamma W_2 + E_2
+\]
+All updates remain exactly as above (including the update for $\Lambda_{s \times s}$). The only thing we need change is $A = Z_1 - LTF$. The update for $T$ is then
+\[
+T = \left( L^T \Psi^{-1}L \right)^{-1}L^T\Psi^{-1}Z_1 F^T \left( FF^T \right)^{-1} = H_2^{-1}H_7F^T \left( FF^T \right)^{-1}.
+\]
+The update for $L$ is
+\[
+L = MU^{-1}
+\]
+\[
+M = Z_1F^TT^T + S_2 J_t^{-1}L_t\Lambda = Z_1F^T T^T + Z_2 G_1^T \Lambda
+\]
+\[
+U = T FF^T T^T + \Lambda L_t^T J_t^{-1} S_2 J_t^{-1} L_t \Lambda + m_2 \left\lbrace \Lambda - \Lambda L_t^T J^{-1}_t L_t \Lambda \right\rbrace = T FF^T T^T + \Lambda G_1 G_1^T \Lambda + m_2 \left\lbrace \Lambda - \Lambda G_2 \Lambda \right\rbrace
+\]
+Since $T$ and $L$ are not identifiable, at the last iteration I will I will take the $QR$ decomposition of $T^T$ and let $T = Q^T$ and $L = LR^T$. \\
+\\
+We can get a possible starting point for $T$ as follows:
+\begin{enumerate}
+\item Model the first set of individuals as $Z_1 = LTF + \Gamma W_1 + E_1 = \tilde{\Gamma}\tilde{W} + E_1$. Determine the latent dimension $r_{0}$ using BCV.
+\item Rotate out $F$ and re-estimate the latent dimension $r_1$ using BCV. Set $s = \max\left( 1, r_0 - r_1 \right)$.
+\item Estimate $\mu = \tilde{\Gamma}\tilde{W}$ using CATE's factor analysis software.
+\item Note that $W_1$ is independent of $F$. Therefore, estimate $LTF$ as $\hat{\mu}P_{F}$.
+\item Let $U \Sigma V^T = \widehat{LTF}$ and $\hat{T} = V^T F^T \left( FF^T \right)^{-1}$.
+\end{enumerate}
+This procedure seems to works well. Another method would be to find the eigenvectors corresponding to the $s$ largest eigenvalues of $\tilde{\Gamma}\tilde{\Gamma}^T - \Gamma\Gamma^T = \tilde{L}\tilde{L}^T$. For example, if $s = 1$ and $u$ was the top eigenvector of $\tilde{L}\tilde{L}^T$, a starting point for $T$ would then be $T^T = \frac{\left( u^T \Psi^{-1}u \right)^{-1}u^T \Psi^{-1} Z_1 F^T \left( FF^T \right)^{-1}}{\norm{\left( u^T \Psi^{-1}u \right)^{-1}u^T \Psi^{-1} Z_1 F^T \left( FF^T \right)^{-1}}_2}$ and $\hat{L} = \norm{\left( u^T \Psi^{-1}u \right)^{-1}u^T \Psi^{-1} Z_1 F^T \left( FF^T \right)^{-1}}_2 u$.
+
+\subsection{Correcting For Cell Type}
+Using the equations in the first sections we first rotate out $C$:
+\[
+\tilde{Y}_1 = B\underbrace{\tilde{X}_1}_{X_1Q_C} + \Gamma \alpha \tilde{X}_1 + \Gamma \underbrace{\tilde{W}_1}_{W_1 Q_C} + \underbrace{\tilde{E}_1}_{E_1 Q_C}
+\]
+and then compute the QR decomposition of $\tilde{X}_1 = \tilde{R}_1^T\tilde{Q}_1^T $:
+\[
+\tilde{Z}_1 = B\tilde{R}_1^T + \Gamma \left( \alpha \tilde{R}_1^T + \tilde{W}_1^{(1)} \right) + \tilde{E}_1^{(1)}.
+\]
+Note that for $\tilde{R}_1$ small (i.e. cell type explains a large portion of the variability in $X_1$), we need to account for spurious correlations due to $\tilde{W}_1^{(1)}$ (even if $\alpha = 0$). For the next set of individuals, we have
+\[
+\tilde{Z}_2 = BR_2^T + \Gamma\left( \alpha R_2^T + W_2^{(1)} \right) + L\left( \Omega R_2^T + D\Xi^{(1)} \right) + E_2^{(1)}.
+\]
+For $\Lambda \otimes \left( R_2^{-1}R_2^{-T} \right) = \Lambda \otimes \left( X_2 X_2^T \right)^{-1}$ small in comparison to $\Omega$, we can ignore the spurious correlation caused by $\Xi^{(1)}$. This basically means that if the cellular variability $\Lambda$ is LESS than the correlation between $C$ and $X$ (like it is in the cases we are considering), then we can ignore spurious correlations, even for small sample sizes in $X_2$. We can check this by comparing the estimates for $D$ and $\Omega R_2^T$. If we know $\Omega$ and $D$, then we can approximate the distribution for $\Omega + D\Xi^{(1)}R_2^{-T}$. If we were to then estimate $\Omega + D\Xi^{(1)}R_2^{-T}$ directly from the data and found that the estimate strayed too far from $\Omega$, we would know that the data are not informative enough to estimate cell type. If $\Omega R_2^T$ is small in comparison to $D$, then we should directly estimate $\Omega + D\Xi^{(1)}R_2^{-T}$ from the data.\\
+\\
+This idea is important because in some cases we are betting off estimating the confounding directly from the data. I am still working on a method to determine when we should use training data, and the variance of $D\Xi^{(1)}R_2^{-T}$ in relation to $\Omega$ will be an important factor.\\
+\\
+As of now, I have a method that seems to control the false discovery rate at a nominal level, even for large confounding and noisy estimates of $L$. There are two scenarios we should consider
+\begin{enumerate}
+\item $\Lambda \otimes \left( X_2 X_2^T \right)^{-1}$ is small. In this case, we can estimate $\Omega + D\Xi^{(1)}R_2^{-T}$ from the data and see how far the estimate is from $\Omega$. If it is close, we know that we can probably estimate the confounding from the data. If not, then we need to use training data. This may be useful in experimental design. If one was involved in a large study (i.e. COPSAC), we could get cell type data on only a fraction of the individuals, estimate $L$, $\Omega$ and $\Lambda = DD^T$. If we find that our estimate for $\Omega + D\Xi^{(1)}R^{-T}$ is close to $\Omega$, then we know the data are informative enough to estimate cell type. If not, then we should collect enough training data to apply my method.
+\item $\Lambda \otimes \left( X_2 X_2^T \right)^{-1}$ is large. In this case, you should use the first set of samples with cell type information to estimate $L$ and see if we can reliably estimate cell type composition from the data. If we can, then we can ignore cell type and estimate it from the data.
+\end{enumerate}
+
+\section{Model 2}
+In this formulation of the problem, I add  the term $T$ so that the mean cell type response is no longer $L_{p \times K}C_{K \times n}$, but $L_{p \times s}T_{s \times K}C_{K \times n}$. $T$ is meant to act as a projection matrix that takes only the elements in $C$ relevant to the mean response. The reason for adding this term came from the observation that if I ignored $C$ in Michelle's data, I estimated the latent dimension to be 4, while when I corrected for $C$ I estimated the latent dimension to be 3. This means that out of the 5 measured cell types, there is a one dimensional projection of $C$ that describes the majority of the relationship between $Y$ and $C$. The full model is
+\[
+Y_1 = BX_1 + L_{p \times s} T_{s \times K} C_{1_{K \times n_1}} + \underbrace{\Gamma_{p \times r}W_{1_{r \times n_1}}}_{\text{additional confounding}} + \underbrace{E_1}_{MN_{p \times n_1}\left( 0, \Sigma_{p \times p}, I_{n_1} \right)}
+\]
+\[
+Y_2 = BX_2 +  L_{p \times s} T_{s \times K} C_{2_{K \times n_2}} + \Gamma_{p \times r}W_{2_{r \times n_2}} + E_2
+\]
+We assume here that
+\[
+C_2 = \Omega_{K \times d}X_2 + \underbrace{\Xi}_{MN_{K \times n_2}\left( 0, \Lambda_{K \times K}, I_{n_2} \right)}
+\]
+and that $W_i \sim MN_{r \times n_i}\left( 0, I_{r}, I_{n_i} \right)$. We use the training date in $\left( C_1, X_1 \right)$ to estimate $\Omega$ and $\Lambda$. From now on, I will let $C = C_1$ and write out the second model as
+\[
+Y_2 = BX_2 + LT\Omega X_2 + LT\Xi + \Gamma W_{2} + E_2.
+\]
+If we let $Q_{X_i}^T$ be an orthogonal basis for the kernel of $X_i$ and $Z_i = Y_i Q_{X_i}$, we estimate $L, \Gamma$ and $T$ from $Z_1$ and $Z_2$:
+\[
+Z_1 = LT\underbrace{F}_{=CQ_{X_1}} + \Gamma \underbrace{\tilde{W}_1}_{MN_{r \times \left( n_1 - d \right)}\left( 0, I_r, I_{n_1-d} \right)} + \tilde{E}_1
+\]
+\[
+Z_2 = L\underbrace{V}_{MN_{s \times \left( n_2-d \right)}\left( 0, T^T \Lambda T, I_{n_2-d} \right)} + \Gamma \tilde{W}_2 + \tilde{E}_2
+\]
+Note that if $s = K$, then we can let $T = I_K$ and the above model reduces to the first case. Notice that for $s < K$, we are now estimating $LT$, which is a rank deficient matrix, meaning the optimization for $L$ is non-convex. Therefore, in order to estimate $L_{p \times s}$ and $T_{s \times K}$ in this problem, we need a good starting point for $L_{p \times s}$, i.e. we need more training data (actually, whenever $\Gamma \neq 0$, estimating $L$ becomes a challenge when we don't have a lot of training data). The benefit of including the term $T$ is that estimating $\Gamma$ and $L$ simultaneously is significantly easier, as we do not have to worry about spurious signal coming from the components of $C$ that do not contribute anything to the variability of $Y$.
+
+\subsection{Update for $L$}
+\[
+L = MU^{-1}
+\]
+\[
+M = Z_1F^TT^T + S_2 J_t^{-1}L_t \tilde{\Lambda} = Z_1F^T T^T + Z_2 G_1^T \tilde{\Lambda}
+\]
+\[
+U = TFF^TT^T + \tilde{\Lambda} L_t^T J_t^{-1} S_2 J_t^{-1} L_t \tilde{\Lambda} + m_2 \left\lbrace \tilde{\Lambda} - \tilde{\Lambda} L_t^T J^{-1}_t L_t \tilde{\Lambda} \right\rbrace = TFF^TT^T + \tilde{\Lambda} G_1 G_1^T \tilde{\Lambda} + m_2 \left\lbrace \tilde{\Lambda} - \tilde{\Lambda} G_2 \tilde{\Lambda} \right\rbrace
+\]
+
+\subsection{Update for $T$}
+Let $\tilde{\Lambda} = T\Lambda T^T$. This will replace $\Lambda$ in all of the $G$ matrices and the log-likelihood above. We only use $\Lambda$ when we update $T$.
+\[
+\log	f\left( Z_1 \right) = -\frac{m_1}{2}\log \abs{\Psi} - \frac{1}{2}\Tr\left[ \left( Z_1 - LTF \right)^T \Psi^{-1}\left( Z_1 - LTF \right) \right] = Const +  \Tr\left(T^T L^T \Psi^{-1}Z_1 F^T\right) - \frac{1}{2}\Tr\left( T^T L^T \Psi^{-1}L TFF^T \right)
+\]
+\[
+\log f\left( Z_2\right) = -\frac{m_2}{2}\log \abs{\Psi + LT\Lambda T^T L^T} - \frac{1}{2}\Tr\left[ S_2\left( \Psi + LT\Lambda T^T L^T \right)^{-1} \right]
+\]
+If we let $g\left( T \right) = -\log	f\left( Z_1 \right) - \log	f\left( Z_2 \right)$, then
+\[
+\frac{dg}{dT} = m_2 L^T J^{-1}L T \Lambda - L^T J^{-1}Z_2Z_2^T J^{-1}LT\Lambda + L^T\Psi^{-1}L TFF^T - L^T \Psi^{-1}Z_1F^T = m_2G_2T\Lambda - G_1G_1^TT\Lambda + H_2TFF^T - H_7F^T
+\]
+and
+\[
+g\left( T \right) = \frac{m_2}{2}\left[ \log \abs{\tilde{\Lambda}} + \log\abs{\tilde{\Lambda}^{-1} + H_2} \right] - \Tr\left( H_7F^TT^T \right) + \frac{1}{2} \Tr\left( H_2 TFF^TT^T \right) - \frac{1}{2}\Tr\left[ H_1^T\left( \tilde{\Lambda}^{-1}+H_2 \right)^{-1}H_1 \right].
+\]
+I can use $g$ and $\frac{dg}{dT}$ as input into BFGS.\\
+\\
+I will perform these updates as follows:\\
+When I update $L$, I will update $H_1, H_2, H_7$. I will then update $T$. Once I have $T$, I will update $\tilde{\Lambda}$, $A$, $H_3$, $H_5$, all $G$'s.
+
+\subsection{Update for $\Gamma$}
+\[
+\Gamma = MU^{-1}
+\]
+\[
+M = AA^T \Psi_t^{-1} \Gamma_t + S_2 J_t^{-1}\Gamma_t - L\left\lbrace \tilde{\Lambda} L^T J_t^{-1} S_2 J_t^{-1} \Gamma_t - m_2\tilde{\Lambda} L^T J_t^{-1}\Gamma_t \right\rbrace = A G_3 + Z_2 G_4 - L\left\lbrace \tilde{\Lambda} G_1 G_4 - m_2 \tilde{\Lambda} G_5 \right\rbrace
+\]
+\[
+U = \left( \Gamma_t^T \Psi_t^{-1}AA^T \Psi_t^{-1}\Gamma_t + m_1\left\lbrace I_r - \Gamma_t^T \Psi_t^{-1}\Gamma_t \right\rbrace \right) + \left( \Gamma_t^T J_t^{-1} S_2 J_t^{-1} \Gamma_t + m_2\left\lbrace I_r - \Gamma_t^T J_t^{-1} \Gamma_t \right\rbrace \right) = G_3^T G_3 + m_1 \left\lbrace I_r - G_6 \right\rbrace + G_4^T G_4 + m_2\left\lbrace I_r - G_7 \right\rbrace.
+\]
+I then need to update $H_1 - H_7$ and then $G_1 - G_7$.
+
+\subsection{Update for $\Sigma$}
+\[
+\left( m_1 + m_2 \right)v = \diag\left( AA^T \right) + \diag\left( S_2 \right) - 2\diag\left( AA^T \Psi^{-1}\Gamma\Gamma^T \right) - 2\diag\left( S_2J^{-1}\Gamma\Gamma^T \right) + \diag\left[ \Gamma \left( \Gamma^T \Psi^{-1}AA^T \Psi^{-1}\Gamma + m_1 \left\lbrace I_r - \Gamma^T \Psi^{-1}\Gamma \right\rbrace \right)\Gamma^T \right]
+\]
+\[
++2\diag\left[ L\left( \tilde{\Lambda} L^T J^{-1}S_2 J^{-1}\Gamma - m_2 \tilde{\Lambda} L^T J^{-1}\Gamma \right)\Gamma^T \right] + \diag\left[ \Gamma\left( \Gamma^T J^{-1}S_2 J^{-1}\Gamma + m_2\left\lbrace I_r - \Gamma^T J^{-1}\Gamma \right\rbrace \right)\Gamma^T \right]
+\]
+\[
++\diag\left[ L\left( \tilde{\Lambda} L^T J^{-1}S_2 J^{-1}L\tilde{\Lambda} + m_2\left\lbrace \tilde{\Lambda} - \tilde{\Lambda} L^T J^{-1}L \tilde{\Lambda} \right\rbrace \right)L^T \right] - 2\diag\left( S_2 J^{-1}L\tilde{\Lambda} L^T \right)
+\]
+\[
+= \diag\left( AA^T \right) + \diag\left( S_2 \right) + \diag\left[ \left( \Gamma\left( G_3^T G_3 + m_1\left\lbrace  I_r - G_6 \right\rbrace + G_4^T G_4 + m_2\left\lbrace I_r - G_7 \right\rbrace \right) + 2L\left( \tilde{\Lambda} G_1 G_4 - m_2 \tilde{\Lambda} G_5 \right) - 2AG_3 - 2Z_2 G_4 \right)\Gamma^T \right]
+\]
+\[
++ \diag\left[ \left( L\left( \tilde{\Lambda} G_1 G_1^T \tilde{\Lambda} + m_2\left\lbrace \tilde{\Lambda} - \tilde{\Lambda} G_2 \tilde{\Lambda} \right\rbrace \right) - 2Z_2 G_1^T \tilde{\Lambda} \right)L^T \right].
+\]
+I then need to update $H_1 - H_6$ and $G_1 - G_7$.
+
+
+\end{document}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
