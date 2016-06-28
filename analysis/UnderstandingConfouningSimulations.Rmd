@@ -1,0 +1,492 @@
+---
+title: "Understanding Confounding Limits"
+author: "Chris McKennan"
+date: "June 17, 2016"
+output: html_document
+---
+
+This file uses simulations to try and understand when we do and do not need training data. The confounding comes in the model through the term $\left( LD \right)\left(D^{-1}\Omega\right) X + \left( LD \right) \Xi$, where $\Xi \sim \left( 0,I_K,I_n \right)$ and $\Lambda = D^2$. What we know is if $LD$ is small, then the coefficient of variation $\frac{\mu}{\sigma/\sqrt{n}}$ will be small and we will not be able to recover the large correlation in $D^{-1}\Omega$. As $p \to \infty$, we will be able to recover it. The smaller $p$ is, however, the worse we do.
+
+## Install Packages and Functions
+
+```{r Packages}
+#library('minfi')
+#library('RefFreeEWAS')
+library('nlme')
+library('knitr')
+library('printr')
+library('gtools')
+library('leapp')
+#install.packages("../RPackages/cate", type="source", repos=NULL)
+library('esaBcv')
+library('MASS')
+library('ruv')
+library('corpcor')
+library('cate')
+library('qvalue')
+library('Rmosek')
+```
+
+```{r Functions}
+source("chunk-options.R")
+source("../R/OptimizeLogLike.R")
+source("../R/OptimizeLogLike_Ksigma.R")
+source("../R/SimSparseData.R")
+source("../R/EstimateBeta.R")
+source("../R/CrudeEstDim.R")
+source("../R/AnalyzeSimResults.R")
+source("../R/PartialEM.R")
+source("../R/UnderestimateOmega.R")
+```
+
+## Estimate $\Omega$ and $\Lambda$ from Michelle's Amish/Hutterite data
+
+```{r EstimateOmegaandLambda}
+path.cov <- "/Users/Chris/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/AmishHutterite/HAmeth_covar_60null_123015.txt"
+Cov.orig <- data.frame( read.table(path.cov, sep="\t", dec=".", header=T, check.names=F) )
+ind.remove <- which(is.na(Cov.orig$Other))
+Cov <- Cov.orig[-ind.remove,]
+n.michelle <- nrow(Cov) 
+
+ind.cell <- c(1,3,4)
+Age.cutoff <- 11.5   #Pre and post pubescent
+
+K <- length(ind.cell)
+X.all <- t(model.matrix(~sex + group + as.numeric(age > Age.cutoff), data=Cov))   #A d x n design matrix
+d <- nrow(X.all)
+C.all <- t(as.matrix( Cov[,31:ncol(Cov)] ))/100   #number of cell types x n matrix
+
+beta.X.all <- solve( X.all %*% t(X.all) ) %*% X.all
+H.all <- t(X.all) %*% beta.X.all
+Omega.OLS <- C.all %*% t(beta.X.all)     #A K x d matrix
+var.OLS <- diag(C.all %*% (diag(n.michelle)-H.all) %*% t(C.all))/(n.michelle-d)
+var.stand <- var.OLS/Omega.OLS[,1]/(1-Omega.OLS[,1])
+
+C.0 <- C.all[ind.cell,]      #Tcells, Eos, Neutrophils. This contains all individuals and is a K x d matrix
+Omega.start <- Omega.OLS[ind.cell,]    #A K x d matrix
+sigma.cell.start <- median(sqrt(var.stand[ind.cell]))
+
+QL.Cell <- Compute.Omega.QL(X.all, C.0, Omega.start, 1e-8)
+Omega.QL <- QL.Cell$Omega     #A K x d matrix
+var.cell <- QL.Cell$v
+Var.Omega <- solve(QL.Cell$FI)
+```
+
+## Generate and analyze synthetic data with CATE
+
+For all proceeding simulations, I will assume only a single confounder (Neutrophils) with 70% sparsity, $n=200$ and $\sigma^2 = 0.15$. I will characterize the simulation using $LD$ and $D^{-1}\Omega$. In the below simulation, $\sigma_{LD} = 0.042$, $D^{-1}\Omega = -1.80$ and $\frac{\sigma}{\sqrt{n}} = 0.027$. Note that $\sigma_{LD}$ is on the order of $\frac{\sigma}{\sqrt{n}}$.
+```{r GenerateData}
+p <- floor(327273/10)    #Number of usuable sites in a typical experiment
+n.sim <- 60   #Number of individuals
+r.sim <- 4     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 1     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(1, 1, 0.7)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[3,3] <- Omega.QL[3,3] / 1
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[,-c(2,4)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15) * sqrt(3)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+analyzed.data <- AnalyzeData2(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
+
+##Correct estimate for alpha##
+
+L <- analyzed.data$cate.nocell$Gamma; Sigma <- analyzed.data$cate.nocell$Sigma
+alpha <- solve(t(L) %*% (L / Sigma) - p/n.sim * diag(r.sim+1)) %*% t(L / Sigma) %*% M.sim %*% X.sim %*% solve(t(X.sim) %*% X.sim)
+blup.W <- alpha %*% t(X.sim) + t(analyzed.data$cate.nocell$Z) %*% (diag(n.sim) - X.sim %*% solve(t(X.sim) %*% X.sim) %*% t(X.sim))
+tmp.mat <- cbind(X.sim, t(blup.W))
+dof <- n.sim - ncol(tmp.mat)
+beta.sim <- M.sim %*% tmp.mat %*% solve(t(tmp.mat) %*% tmp.mat)
+cov.sim <- solve(t(tmp.mat) %*% tmp.mat)
+p.values.sim <- 2 - 2*pt( abs(beta.sim[,2]) / sqrt(Sigma) / sqrt(cov.sim[2,2]), df=dof )
+q.values.sim <- qvalue(p.values.sim)
+fsr.sim <- false.sign.results(B.sim[,1], beta.sim[,2], q.values.sim$qvalue)
+lines(sort(q.values.sim$qvalue), fsr.sim$fdr, col="blue")
+```
+The above simulations indicate that under this scenario, we do poorly. For $p$ very large (and $r$ small), this appears to happen when $\frac{1}{p}\Gamma^T\Sigma^{-1}\Gamma = O\left( \frac{1}{n} \right)$ and the correlation $\frac{1}{p}\Gamma^T \Sigma^{-1}YX\left( X^TX \right)^{-1}$ is somewhat large. Note that as $n$ gets larger, the correlation we would need for this method to fail also becomes larger (for fixed $r$). This is because:
+\[
+\hat{\Sigma}^{-1/2}\hat{\Gamma} = \hat{\Sigma}^{-1/2}\Gamma + R, \text{ where } \frac{1}{p}R^T R \approx \frac{1}{n}I_r \text{ for $p$ large}.
+\]
+\[
+\Rightarrow \frac{1}{p}\hat{\Gamma}^T\hat{\Sigma}^{-1}\hat{\Gamma} = \frac{1}{p}\Gamma^T\hat{\Sigma}^{-1}\Gamma + \frac{1}{p}R^T R + \underbrace{\frac{1}{p}R^T \hat{\Sigma}^{-1/2}\Gamma + \frac{1}{p}\Gamma^T \hat{\Sigma}^{-1/2}R}_{\approx 0} \approx \frac{1}{p}\Gamma^T\hat{\Sigma}^{-1}\Gamma + \frac{1}{n}I_r \approx \frac{1}{p}\Gamma^T\Sigma^{-1}\Gamma + \frac{1}{n}I_r
+\]
+If I then let $\hat{\alpha} = \left( \hat{\Gamma}^T\hat{\Sigma}^{-1}\hat{\Gamma} - \frac{p}{n}I_r \right)^{-1} \hat{\Gamma}^T \hat{\Sigma}^{-1}YX\left( X^TX \right)^{-1}$, I get the blue line and seem to correct the red line. The term $\frac{1}{p}\Gamma^T\Sigma^{-1}\Gamma$ then determines how informative the data $Y$ are for cell type. 
+
+## How does the size of $\Omega$ effect estimation?
+I will run a series of simulations to see how the size of $\Omega$ effects estimation.
+
+## $\frac{1}{p} L^T\Sigma^{-1}L \approx \frac{1}{n}$
+
+In this simulation, I will reduce $p$ by a factor of 10, since the number of sites does not seem to effect estimation (so long as it is large). My simulations will be such that $L^T\Sigma^{-1}L \approx \frac{1}{n}$. I will also include 4 additional confounders that are uncorrelated with $X$. The only conounder correlated with $X$ is Nuetrophils.
+```{r InitParams_1}
+p <- floor(327273/10)    #Number of usuable sites in a typical experiment
+n.sim <- 260   #Number of individuals
+r.sim <- 4     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 1     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(1, 1, 0.7)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[3,3] <- Omega.QL[3,3] / 1
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[,-c(2,4)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15)
+
+##Values for Omega##
+Omega.sim.vec <- c(Omega.QL[3,3] / 1, Omega.QL[3,3] / 1.2, Omega.QL[3,3] / 1.4, Omega.QL[3,3] / 1.6, Omega.QL[3,3] / 1.8, Omega.QL[3,3] / 2, Omega.QL[3,3] / 2.2, Omega.QL[3,3] / 2.4, Omega.QL[3,3] / 2.6, Omega.QL[3,3] / 2.8, Omega.QL[3,3] / 3, Omega.QL[3,3] / 3.5, Omega.QL[3,3] / 4, Omega.QL[3,3] / 5)
+
+##What I will record##
+fdp.05.1 <- rep(0,length(Omega.sim.vec))     #True FDP at a qvalue of 0.05, without cell type
+fdp.10.1 <- rep(0,length(Omega.sim.vec))     #True FDP at a qvalue of 0.10, without cell type
+fdp.20.1 <- rep(0,length(Omega.sim.vec))     #True FDP at a qvalue of 0.20, without cell type
+pi0.est.vec.1 <- rep(0,length(Omega.sim.vec))  #Estimated pi0 without cell type
+Corr.vec.1 <- rep(0,length(Omega.sim.vec))    #The true Neutrophil correlation, adjucted for Lambda[3,3] (i.e Omega/sqrt(Lambda))
+```
+
+I will record the above parameters for each simulation, along with plotting the results.
+```{r OmegaSimulation_1}
+n.repeat <- 10
+for (i in 1:length(Omega.sim.vec)) {
+  Omega.sim.i <- Omega.sim
+  Omega.sim.i[3,2] <- Omega.sim.vec[i]
+  
+  for (j in 1:n.repeat) {
+	  SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim.i, alpha.cell.sim, alpha.sigma, beta.sigma)
+	  
+	  data.sim.i <- data.frame(cbind(SimData$X.sim, SimData$C.sim))
+	  colnames(data.sim.i) <- c("Intercept", "Cov1", "Tcells", "Eos", "Neutro")
+	  
+	  analyzed.data.i <- AnalyzeData2(SimData$M.sim, data.sim.i, r.sim, r.sim+1, SimData$B.sim, SimData$L.sim, plotit=F)
+	  
+	  ind.05 <- which.min(abs(sort(analyzed.data.i$q.nocell$qvalue) - 0.05))
+	  ind.10 <- which.min(abs(sort(analyzed.data.i$q.nocell$qvalue) - 0.10))
+	  ind.20 <- which.min(abs(sort(analyzed.data.i$q.nocell$qvalue) - 0.20))
+	  
+	  fdp.05.1[i] <- fdp.05.1[i] + analyzed.data.i$fsr.nocell$fdr[ind.05]/n.repeat
+	  fdp.10.1[i] <- fdp.10.1[i] + analyzed.data.i$fsr.nocell$fdr[ind.10]/n.repeat
+	  fdp.20.1[i] <- fdp.20.1[i] + analyzed.data.i$fsr.nocell$fdr[ind.20]/n.repeat
+	  pi0.est.vec.1[i] <- pi0.est.vec.1[i] + analyzed.data.i$q.nocell$pi0/n.repeat
+	  Corr.vec.1[i] <- Corr.vec.1[i] + Omega.sim.i[3,2] / sqrt( (1/(n.sim-d)*t(SimData$C.sim) %*% (diag(n.sim) - SimData$X.sim %*% solve(t(SimData$X.sim)%*%SimData$X.sim) %*% t(SimData$X.sim)) %*% SimData$C.sim)[3,3] )/n.repeat
+  }
+  print(as.character(i))
+}
+par(mar = c(5,5,3,5))
+plot(abs(Corr.vec.1), log(fdp.05.1/0.05, base=2), type="l", xlab="Standardized Correlation", ylab="Log2 Est FDP - Log2 True FDP", main=expression(paste(Omega, " Simulation Results, ", frac(1,p)*L^T*Sigma^-1*L %~~% frac(1,n))))
+lines(abs(Corr.vec.1), log(fdp.10.1/0.10, base=2), col="red")
+lines(abs(Corr.vec.1), log(fdp.20.1/0.20, base=2), col="blue")
+par(new=T)
+plot(abs(Corr.vec.1), pi0.est.vec.1 - pi0.B.sim, axes=F, pch="*", xlab=NA, ylab=NA)
+axis(side = 4)
+mtext(side = 4, line = 3, text=expression(hat(pi)[0]-pi[0]))
+abline(h=0, lty=2)
+legend("left", legend=c("FDP=0.05", "FDP=0.10", "FDP=0.20", expression(hat(pi)[0]-pi[0])), col=c("black", "red" , "blue", "black"), lty=c(1, 1, 1, NA), pch=c(NA, NA, NA, "*"), cex=0.7, border=NA, bty="n")
+```
+
+
+## $\frac{1}{p} L^T\Sigma^{-1}L \approx \frac{10}{n}$
+The simulation scenario is identical except for the size of $\frac{1}{p} L^T\Sigma^{-1}L$.
+
+```{r InitParams_2}
+p <- floor(327273/10)    #Number of usuable sites in a typical experiment
+n.sim <- 260   #Number of individuals
+r.sim <- 4     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 1     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(1, 1, 0.7)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[3,3] <- Omega.QL[3,3] / 1
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[,-c(2,4)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15) * sqrt(10)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15)
+
+##Values for Omega##
+Omega.sim.vec <- c(Omega.QL[3,3] / 1, Omega.QL[3,3] / 1.2, Omega.QL[3,3] / 1.4, Omega.QL[3,3] / 1.6, Omega.QL[3,3] / 1.8, Omega.QL[3,3] / 2, Omega.QL[3,3] / 2.2, Omega.QL[3,3] / 2.4, Omega.QL[3,3] / 2.6, Omega.QL[3,3] / 2.8, Omega.QL[3,3] / 3, Omega.QL[3,3] / 3.5, Omega.QL[3,3] / 4, Omega.QL[3,3] / 5)
+
+##What I will record##
+fdp.05.2 <- rep(0,length(Omega.sim.vec))     #True FDP at a qvalue of 0.05, without cell type
+fdp.10.2 <- rep(0,length(Omega.sim.vec))     #True FDP at a qvalue of 0.10, without cell type
+fdp.20.2 <- rep(0,length(Omega.sim.vec))     #True FDP at a qvalue of 0.20, without cell type
+pi0.est.vec.2 <- rep(0,length(Omega.sim.vec))  #Estimated pi0 without cell type
+Corr.vec.2 <- rep(0,length(Omega.sim.vec))    #The true Neutrophil correlation, adjucted for Lambda[3,3] (i.e Omega/sqrt(Lambda))
+```
+
+
+I will record the above parameters for each simulation, along with plotting the results.
+```{r OmegaSimulation_2}
+n.repeat <- 10
+for (i in 1:length(Omega.sim.vec)) {
+  Omega.sim.i <- Omega.sim
+  Omega.sim.i[3,2] <- Omega.sim.vec[i]
+  
+  for (j in 1:n.repeat) {
+    SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim.i, alpha.cell.sim, alpha.sigma, beta.sigma)
+    
+	  data.sim.i <- data.frame(cbind(SimData$X.sim, SimData$C.sim))
+	  colnames(data.sim.i) <- c("Intercept", "Cov1", "Tcells", "Eos", "Neutro")
+	  
+	  analyzed.data.i <- AnalyzeData2(SimData$M.sim, data.sim.i, r.sim, r.sim+1, SimData$B.sim, SimData$L.sim, plotit=F)
+	  
+	  ind.05 <- which.min(abs(sort(analyzed.data.i$q.nocell$qvalue) - 0.05))
+	  ind.10 <- which.min(abs(sort(analyzed.data.i$q.nocell$qvalue) - 0.10))
+	  ind.20 <- which.min(abs(sort(analyzed.data.i$q.nocell$qvalue) - 0.20))
+	  
+	  fdp.05.2[i] <- fdp.05.2[i] + analyzed.data.i$fsr.nocell$fdr[ind.05]/n.repeat
+	  fdp.10.2[i] <- fdp.10.2[i] + analyzed.data.i$fsr.nocell$fdr[ind.10]/n.repeat
+	  fdp.20.2[i] <- fdp.20.2[i] + analyzed.data.i$fsr.nocell$fdr[ind.20]/n.repeat
+	  pi0.est.vec.2[i] <- pi0.est.vec.2[i] + analyzed.data.i$q.nocell$pi0/n.repeat
+	  Corr.vec.2[i] <- Corr.vec.2[i] + Omega.sim.i[3,2] / sqrt( (1/(n.sim-d)*t(SimData$C.sim) %*% (diag(n.sim) - SimData$X.sim %*% solve(t(SimData$X.sim)%*%SimData$X.sim) %*% t(SimData$X.sim)) %*% SimData$C.sim)[3,3] )/n.repeat
+  }
+  print(as.character(i))
+}
+par(mar = c(5,5,3,5))
+plot(abs(Corr.vec.2), log(fdp.05.2/0.05, base=2), type="l", xlab="Standardized Correlation", ylab="Log2 Est FDP - Log2 True FDP", main=expression(paste(Omega, " Simulation Results, ", frac(1,p)*L^T*Sigma^-1*L %~~% frac(10,n))))
+lines(abs(Corr.vec.2), log(fdp.10.2/0.10, base=2), col="red")
+lines(abs(Corr.vec.2), log(fdp.20.2/0.20, base=2), col="blue")
+par(new=T)
+plot(abs(Corr.vec.2), pi0.est.vec.2 - pi0.B.sim, axes=F, pch="*", xlab=NA, ylab=NA)
+axis(side = 4)
+mtext(side = 4, line = 3, text=expression(hat(pi)[0]-pi[0]))
+abline(h=0, lty=2)
+legend("left", legend=c("FDP=0.05", "FDP=0.10", "FDP=0.20", expression(hat(pi)[0]-pi[0])), col=c("black", "red" , "blue", "black"), lty=c(1, 1, 1, NA), pch=c(NA, NA, NA, "*"), cex=0.7, border=NA, bty="n")
+```
+
+
+## $\frac{1}{p} L^T\Sigma^{-1}L \approx \frac{100}{n}$
+The simulation scenario is identical except for the size of $\frac{1}{p} L^T\Sigma^{-1}L$.
+
+```{r InitParams_3}
+p <- floor(327273/10)    #Number of usuable sites in a typical experiment
+n.sim <- 260   #Number of individuals
+r.sim <- 4     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 1     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(1, 1, 0.7)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[3,3] <- Omega.QL[3,3] / 1
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[,-c(2,4)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15) * sqrt(100)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15)
+
+##Values for Omega##
+Omega.sim.vec <- c(Omega.QL[3,3] / 1, Omega.QL[3,3] / 1.2, Omega.QL[3,3] / 1.4, Omega.QL[3,3] / 1.6, Omega.QL[3,3] / 1.8, Omega.QL[3,3] / 2, Omega.QL[3,3] / 2.2, Omega.QL[3,3] / 2.4, Omega.QL[3,3] / 2.6, Omega.QL[3,3] / 2.8, Omega.QL[3,3] / 3, Omega.QL[3,3] / 3.5, Omega.QL[3,3] / 4, Omega.QL[3,3] / 5)
+
+##What I will record##
+fdp.05.3 <- rep(0,length(Omega.sim.vec))     #True FDP at a qvalue of 0.05, without cell type
+fdp.10.3 <- rep(0,length(Omega.sim.vec))     #True FDP at a qvalue of 0.10, without cell type
+fdp.20.3 <- rep(0,length(Omega.sim.vec))     #True FDP at a qvalue of 0.20, without cell type
+pi0.est.vec.3 <- rep(0,length(Omega.sim.vec))  #Estimated pi0 without cell type
+Corr.vec.3 <- rep(0,length(Omega.sim.vec))    #The true Neutrophil correlation, adjucted for Lambda[3,3] (i.e Omega/sqrt(Lambda))
+```
+
+
+I will record the above parameters for each simulation, along with plotting the results.
+```{r OmegaSimulation_3}
+n.repeat <- 10
+for (i in 1:length(Omega.sim.vec)) {
+  Omega.sim.i <- Omega.sim
+  Omega.sim.i[3,2] <- Omega.sim.vec[i]
+  
+  for (j in 1:n.repeat) {
+    SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim.i, alpha.cell.sim, alpha.sigma, beta.sigma)
+    
+    data.sim.i <- data.frame(cbind(SimData$X.sim, SimData$C.sim))
+	  colnames(data.sim.i) <- c("Intercept", "Cov1", "Tcells", "Eos", "Neutro")
+	  
+	  analyzed.data.i <- AnalyzeData2(SimData$M.sim, data.sim.i, r.sim, r.sim+1, SimData$B.sim, SimData$L.sim, plotit=F)
+	  
+	  ind.05 <- which.min(abs(sort(analyzed.data.i$q.nocell$qvalue) - 0.05))
+	  ind.10 <- which.min(abs(sort(analyzed.data.i$q.nocell$qvalue) - 0.10))
+	  ind.20 <- which.min(abs(sort(analyzed.data.i$q.nocell$qvalue) - 0.20))
+	  
+	  fdp.05.3[i] <- fdp.05.3[i] + analyzed.data.i$fsr.nocell$fdr[ind.05]/n.repeat
+	  fdp.10.3[i] <- fdp.10.3[i] + analyzed.data.i$fsr.nocell$fdr[ind.10]/n.repeat
+	  fdp.20.3[i] <- fdp.20.3[i] + analyzed.data.i$fsr.nocell$fdr[ind.20]/n.repeat
+	  pi0.est.vec.3[i] <- pi0.est.vec.3[i] + analyzed.data.i$q.nocell$pi0/n.repeat
+	  Corr.vec.3[i] <- Corr.vec.3[i] + Omega.sim.i[3,2] / sqrt( (1/(n.sim-d)*t(SimData$C.sim) %*% (diag(n.sim) - SimData$X.sim %*% solve(t(SimData$X.sim)%*%SimData$X.sim) %*% t(SimData$X.sim)) %*% SimData$C.sim)[3,3] )/n.repeat
+  }
+  print(as.character(i))
+}
+par(mar = c(5,5,3,5))
+plot(abs(Corr.vec.3), log(fdp.05.3/0.05, base=2), type="l", xlab="Standardized Correlation", ylab="Log2 Est FDP - Log2 True FDP", main=expression(paste(Omega, " Simulation Results, ", frac(1,p)*L^T*Sigma^-1*L %~~% frac(100,n))))
+lines(abs(Corr.vec.3), log(fdp.10.3/0.10, base=2), col="red")
+lines(abs(Corr.vec.3), log(fdp.20.3/0.20, base=2), col="blue")
+par(new=T)
+plot(abs(Corr.vec.3), pi0.est.vec.3 - pi0.B.sim, axes=F, pch="*", xlab=NA, ylab=NA)
+axis(side = 4)
+mtext(side = 4, line = 3, text=expression(hat(pi)[0]-pi[0]))
+abline(h=0, lty=2)
+legend("left", legend=c("FDP=0.05", "FDP=0.10", "FDP=0.20", expression(hat(pi)[0]-pi[0])), col=c("black", "red" , "blue", "black"), lty=c(1, 1, 1, NA), pch=c(NA, NA, NA, "*"), cex=0.7, border=NA, bty="n")
+```
+
+
+## Real Data
+I will use Michelle's Amish/Hutterite data 
+
+```{r ImportMichellesData}
+path.M <- "~/Desktop/Uchicago/Nicolae/DNAMethylation/MichellesData/AmishHutterite/HAmeth_Mval_prePCA_60null_123015.txt"
+M.orig <- data.frame( read.table(path.M, sep="\t", dec=".", header=T, check.names=F) )
+p <- nrow(M.orig)      #Number of sites
+n.orig <- ncol(M.orig) - 1
+
+ind.remove <- which(is.na(Cov.orig$Other))
+M <- as.matrix(M.orig[,2:(n.orig+1)])
+M <- M[,-ind.remove]
+Cov <- Cov.orig[-ind.remove,]
+n <- nrow(Cov)        #Number of individuals
+
+Cov.CATE <- Cov
+Cov.CATE[,(ncol(Cov)-5):ncol(Cov)] <- Cov[,(ncol(Cov)-5):ncol(Cov)]/100
+Cov.CATE <- model.matrix(~group + T_cells + B_cells + Eos + Neutro + Mono,data=Cov.CATE)
+colnames(Cov.CATE) <- c("Intercept", "groupHutterite", "T_cells", "B_cells", "Eos", "Neutro", "Mono")
+Cov.CATE <- data.frame(Cov.CATE)
+```
+
+CATE using the cell type information
+```{r CATE_WithCell}
+cate.Cell.m <- cate(~groupHutterite | T_cells + B_cells + Eos + Neutro + Mono, X.data=Cov.CATE, Y=t(M), r=4, fa.method="ml", adj.method="rr", calibrate=F)
+cov.mat.cell <- cbind(as.matrix(Cov.CATE), cate.Cell.m$Z)
+beta.cell <- M %*% cov.mat.cell %*% solve(t(cov.mat.cell)%*%cov.mat.cell)
+dof.cell <- n - ncol(cov.mat.cell)
+Sigma.cell <- rowSums((M %*% (diag(n) - cov.mat.cell%*%solve(t(cov.mat.cell)%*%cov.mat.cell)%*%t(cov.mat.cell))) * M) / dof.cell
+z.cell <- beta.cell[,2] / sqrt(Sigma.cell) / sqrt(solve(t(cov.mat.cell) %*% cov.mat.cell)[2,2])
+p.values.cell.group <- 2 - 2*pt(abs(z.cell)), df=dof.cell)
+q.cell <- qvalue(p.values.cell.group)
+pi.cell.group <- q.cell$pi0
+
+L.m <- (M %*% cov.mat.cell %*% solve(t(cov.mat.cell)%*%cov.mat.cell))[,3:7]
+Lambda.m <- 1/(n - 2) * C.all[1:5,] %*% (diag(n) - cov.mat.cell[,1:2] %*% solve(t(cov.mat.cell[,1:2]) %*% cov.mat.cell[,1:2], t(cov.mat.cell[,1:2]))) %*% t(C.all[1:5,])
+D.m <- t(chol(Lambda.m))
+L.m.stand <- L.m %*% D.m
+Omega.m.stand <- solve(D.m, C.all[1:5,] %*% cov.mat.cell[,1:2] %*% solve(t(cov.mat.cell[,1:2]) %*% cov.mat.cell[,1:2]))
+inf.cell <- n * diag(1/p * t(L.m.stand / Sigma.cell) %*% L.m.stand)   #The ratio of 1/pL'Sigma^{-1}L : 1/n is about 1
+
+X.tmp <- (diag(n) - t(C.all[1:5,]) %*% solve(C.all[1:5,] %*% t(C.all[1:5,]), C.all[1:5,])) %*% cov.mat.nocell[,1:2]
+conf.sd.above <- sqrt(t(cate.Cell.m$alpha) %*% cate.Cell.m$alpha) / sqrt(solve(t(X.tmp)%*%X.tmp)[2,2])   #The estimated confounded is about 1.4 sd's times what we would expect by chance, indicating the confounding we do observe is probably just due to chance.
+```
+Note that $\frac{1}{p}L^T \Sigma^{-1}L = O\left( \frac{1}{n} \right)$, meaning we are going to have a very difficult time estimating the correlation between cell type and $X$ from the methylation data $M$. This is aggravated by the fact that the standardized correlation is about 2 for Neutrophils, which seem to be very correlated with $M$ (see p-value histogram for neutrophils). We can conclude that we need cell type data in this example to get a better estimate of $\Omega$.
+
+
+```{r Cate_NoCell}
+cate.noCell.m <- cate(~groupHutterite, X.data=Cov.CATE, Y=t(M), r=6, fa.method="ml", adj.method="rr", calibrate=F)
+cov.mat.nocell <- cbind(as.matrix(Cov.CATE)[,1:2], cate.noCell.m$Z)
+beta.nocell <- M %*% cov.mat.nocell %*% solve(t(cov.mat.nocell)%*%cov.mat.nocell)
+dof.nocell <- n - ncol(cov.mat.nocell)
+Sigma.nocell <- rowSums((M %*% (diag(n) - cov.mat.nocell%*%solve(t(cov.mat.nocell)%*%cov.mat.nocell)%*%t(cov.mat.nocell))) * M) / dof.nocell
+z.nocell <- beta.nocell[,2] / sqrt(Sigma.nocell) / sqrt(solve(t(cov.mat.nocell) %*% cov.mat.nocell)[2,2])
+p.values.nocell.group <- 2 - 2*pt(abs(z.nocell), df=dof.nocell)
+q.nocell <- qvalue(p.values.nocell.group)
+pi.nocell.group <- q.nocell$pi0
+```
+Without cell type information, we estimate $\pi_0$ to be 0.80. With cell type, we estimate it to be $0.95$. The anti-convervative behavior is exactly what I observed in simulations.
+
+```{r Houseman_noCell}
+beta.star <- M %*% cov.mat.nocell[,1:2] %*% solve(t(cov.mat.nocell[,1:2])%*%cov.mat.nocell[,1:2])
+gam.house <- cate.noCell.m$Gamma
+beta.house <- beta.star - gam.house %*% solve(t(gam.house / Sigma.nocell)%*%gam.house) %*% (t(gam.house / Sigma.nocell) %*% beta.star)
+plot(beta.cell[,2], beta.house[,2]); abline(a=0,b=1,col="red")
+
+beta.gam <- solve(t(gam.house) %*% gam.house, t(gam.house)) %*% beta.cell[,2]
+sd.diag.gam <- sqrt(diag(solve(t(gam.house) %*% gam.house)))
+sigma.gam <- sqrt(1/(p - 6) * t(beta.cell[,2] - gam.house %*% beta.gam) %*% (beta.cell[,2] - gam.house %*% beta.gam))
+stand.beta.gam <- as.vector(beta.gam) / sigma.gam / as.vector(sd.diag.gam)
+```
+The results we get for Houseman are almost identical to the results we get with CATE. This is because Houseman is essentially GLS as opposed to robust regression to estimate $\Omega$. The correlation estimates we get are about the same.
+
+Interestingly enough, $\hat{B}_{\text{no cell}}$ is typically larger than $\hat{B}_{\text{cell}}$. The reason we see so many false positives is because the correlation $\Omega$ is UNDERESTIMATED, meaning we UNDERESTIMATE the variance of $\hat{B}_{\text{no cell}}$.
+
+## Do we alyways underestimate $\Omega$?
+I want to understand if for large $p$ we ALWAYS underestimate $\Omega$.
+
+```{r UnderestimateOmega}
+p.und <- floor(327273 / 10)
+r.und <- 3
+n.und <- 100
+n.repeat <- 100
+
+Sigma.und <- rep(0.15, p.und)
+norm.true.all <- rep(NA, n.repeat)
+norm.est.all <- rep(NA, n.repeat)
+Gamma.und <- matrix(rnorm(r.und*p.und), nrow=p.und, ncol=r.und) * sqrt(1/n.und)
+V.und <- svd(t(Gamma.und / Sigma.und) %*% Gamma.und)$v
+Gamma.und <- Gamma.und %*% V.und
+for (i in 1:n.repeat) {
+  X.und <- cbind(rep(1,n.und), rbinom(n=n.und, size=1, prob=0.5))
+  alpha.und <- matrix(0, nrow=r.und, ncol=1)
+  out.est <- CompareEstimate(X.und, alpha.und, Gamma.und, Sigma.und)
+
+  norm.true.all[i] <- t(out.est$alpha.true) %*% out.est$alpha.true
+  norm.est.all[i] <- t(out.est$alpha.hat) %*% (out.est$alpha.hat)
+}
+plot(norm.true.all, norm.est.all); abline(a=0, b=1, col="red")
+plot(norm.true.all - norm.est.all); abline(h=0, col="red")
+summary(lm(norm.est.all~norm.true.all))
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```
+
+

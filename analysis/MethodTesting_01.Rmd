@@ -1,0 +1,186 @@
+---
+title: "Method Testing 01"
+author: "Chris McKennan"
+date: "June 13, 2016"
+output: html_document
+---
+
+The purpose of this document is to test the method I have developed. The simulation data I will use is stored in ../data/Simulations_160608. 
+
+## Install Packages and Functions
+
+```{r Packages}
+#library('minfi')
+#library('RefFreeEWAS')
+library('nlme')
+library('knitr')
+library('printr')
+library('gtools')
+library('leapp')
+#install.packages("../RPackages/cate", type="source", repos=NULL)
+library('esaBcv')
+library('MASS')
+library('ruv')
+library('corpcor')
+library('cate')
+library('qvalue')
+library('Rmosek')
+```
+
+```{r Functions}
+source("chunk-options.R")
+source("../R/OptimizeLogLike.R")
+source("../R/OptimizeLogLike_Ksigma.R")
+source("../R/SimSparseData.R")
+source("../R/EstimateBeta.R")
+source("../R/CrudeEstDim.R")
+source("../R/AnalyzeSimResults.R")
+source("../R/PartialEM.R")
+```
+
+## Import Simulated Data
+
+```{r ImportData}
+#Y#
+M.sim <- as.matrix(data.frame(read.table("../data/Simulations_160608/Msim.txt", sep="\t", header=F, dec=".", quote="\"")))
+p <- nrow(M.sim)
+n <- ncol(M.sim)
+
+#X and C#
+all.Cov <- data.frame(read.table("../data/Simulations_160608/Covsim.txt", sep="\t", header=T, dec=".", quote="\""))
+ind.1 <- as.vector(read.table("../data/Simulations_160608/ind1sim.txt", sep="\t", header=F, dec=".", quote="\""))
+ind.1 <- unlist(ind.1)
+X.sim <- as.matrix(all.Cov[,1:3])  #n x d
+C.sim <- as.matrix(all.Cov[,4:6])  #n x K
+K <- ncol(C.sim)
+d <- ncol(X.sim)
+
+X.sim.1 <- X.sim[ind.1,]
+C.sim.1 <- C.sim[ind.1,]
+n.1 <- nrow(X.sim.1)
+X.sim.2 <- X.sim[-ind.1,]
+n.2 <- n - n.1
+
+#Omega#
+Omega.all <- data.frame(read.table("../data/Simulations_160608/Omegasim.txt", sep="\t", header=T, dec=".", quote="\""))
+Omega.sim <- as.matrix(Omega.all[,2:ncol(Omega.all)])
+
+#L#
+L.sim <- as.matrix(data.frame(read.table("../data/Simulations_160608/Lsim.txt", sep="\t", header=F, dec=".", quote="\"")))
+
+#B#
+B.sim <- as.matrix(data.frame(read.table("../data/Simulations_160608/Bsim.txt", sep="\t", header=F, dec=".", quote="\"")))
+
+#Gamma#
+Gamma.sim <- as.matrix(read.table("../data/Simulations_160608/Gammasim.txt", sep="\t", header=F, dec=".", quote="\""))
+r.cell <- ncol(Gamma.sim)
+
+#Sigma#
+Sigma.sim <- as.vector(read.table("../data/Simulations_160608/Sigmasim.txt", sep="\t", header=F, dec=".", quote="\""))
+Sigma.sim <- unlist(Sigma.sim)
+
+```
+
+Initialize Important Matrices
+
+```{r InitMatrices}
+qr.X1 <- qr(X.sim.1)
+qr.X2 <- qr(X.sim.2)
+qr.X <- qr(X.sim)
+R.X2 <- qr.R(qr.X2)
+Q.X1 <- qr.Q(qr.X1, complete=T)
+Q.X2 <- qr.Q(qr.X2, complete=T)
+Q.X <- qr.Q(qr.X, complete=T)
+
+Q.X1.orthog <- Q.X1[,(d+1):n.1]   #n.1 x (n.1 - d)
+Q.X2.orthog <- Q.X2[,(d+1):n.2]   #n.2 x (n.2 - d)
+Q.X.orthog <- Q.X[,(d+1):n]
+
+Z1.sim <- M.sim[,ind.1] %*% Q.X1.orthog
+Z2.sim <- M.sim[,-ind.1] %*% Q.X2.orthog
+
+F.mat <- t(C.sim.1) %*% Q.X1.orthog   #K x (n.1 - d)
+
+m1.sim <- n.1 - d     #Effective number of observations after rotating out X.1
+m2.sim <- n.2 - d     #Effective number of observations after rotating out X.2
+```
+
+##Initialize Input Parameters
+
+Estimate $\Sigma$ without correcting for cell type. This gives a good estimate for $\Sigma$ and will be treated as fixed when estimating $L$ and $\Gamma$.
+```{r EstSigma}
+fa.em.sim <- fa.em( t( M.sim %*% Q.X.orthog), r=r.cell+1 )   #Factor analysis using EM on the whole data while NOT accounting for cell type. 
+Sigma.use <- fa.em.sim$Sigma
+rm(fa.em.sim)
+```
+
+For now I will estimate all 3 cell types and will NOT project them onto a lower dimensional space.
+```{r Init_LandGamma}
+update.T <- F
+theta.start <- Starting.Points(Z1=Z1.sim, Z2=Z2.sim, F.mat=F.mat, Sigma=Sigma.use, L.0=NULL, Gamma.0=NULL, r.nocell=r.cell+1, r.cell=r.cell, update.T=update.T)
+Gamma.start2 <- theta.start$Gamma.0
+Lambda.0 <- theta.start$Lambda.0
+L.start <- theta.start$L.0
+rm(theta.start)
+```
+
+## Perform EM To Estimate $L$ and $\Gamma$
+
+```{r Est_LandGamma}
+update.Gamma <- T
+update.Sigma <- F
+update.Lambda <- F
+tol <- 1e-6
+max.iter <- 1e4
+```
+
+##Correct for Cell Type
+
+```{r CorrectCellType}
+orthog.C.1 <- diag(n.1) - C.sim.1 %*% solve(t(C.sim.1) %*% C.sim.1, t(C.sim.1))
+X1.tilde <- orthog.C.1 %*% X.sim.1
+qr.X1.tilde <- qr(X1.tilde)
+R1.tilde <- qr.R(qr.X1.tilde)
+Q1.tilde <- qr.Q(qr.X1.tilde, complete=T)
+Q1.tilde.R <- Q1.tilde[,1:d]
+Q1.tilde.orthog <- Q1.tilde[,(d+1):n.1]
+
+Z1.tilde <- M.sim[,ind.1] %*% orthog.C.1
+Z1.tilde.R <- Z1.tilde %*% Q1.tilde.R
+Z1.tilde.orghog <- Z1.tilde %*% Q1.tilde.orthog
+
+b.ind.nonzero <- which(B.sim[,2] != 0)
+
+#Solve for alpha.1#
+Y1Rmt.mc <- Z1.tilde.R %*% solve(t(R1.tilde))
+alpha.1 <- solve( t(Gamma[-b.ind.nonzero,]) %*% (Gamma[-b.ind.nonzero,] / Sigma.use[-b.ind.nonzero]), t(Gamma[-b.ind.nonzero,]) %*% (Y1Rmt.mc[-b.ind.nonzero,] / Sigma.use[-b.ind.nonzero]) )
+
+#Solve for alpha.2#
+Y2Rmt <- M.sim[,-ind.1] %*% X.sim.2 %*% solve(t(X.sim.2) %*% X.sim.2) - cbind(L[,1:3]) %*% rbind((t(C.sim.1) %*% X.sim.1 %*% solve(t(X.sim.1) %*% X.sim.1))[1:3,])
+alpha.2 <- solve( t(Gamma[-b.ind.nonzero,]) %*% (Gamma[-b.ind.nonzero,] / Sigma.use[-b.ind.nonzero]), t(Gamma[-b.ind.nonzero,]) %*% (Y2Rmt[-b.ind.nonzero,] / Sigma.use[-b.ind.nonzero]) )
+
+C.2.blup <- blup.V %*% t(Q.X2.orthog) + t(C.sim.1) %*% X.sim.1 %*% solve(t(X.sim.1) %*% X.sim.1) %*% t(X.sim.2)
+#C.2.blup <- blup.V %*% t(Q.X2.orthog) + alpha.test %*% t(X.sim.2)/1
+W1.blup <- blup.W1 %*% t(Q.X1[,(ncol(X.sim.1)+1):n.1]) + alpha.1 %*% t(X.sim.1)
+W2.blup <- blup.W2 %*% t(Q.X2[,(ncol(X.sim.2)+1):n.2]) + alpha.2 %*% t(X.sim.2)
+mat.cov.pop <- cbind( rbind(X.sim.1, X.sim.2), rbind(C.sim.1, t(C.2.blup)), rbind(t(W1.blup), t(W2.blup)) )
+var.pop <- solve(t(mat.cov.pop) %*% mat.cov.pop)
+#Sigma.pop <- EM.nosigma$Sigma
+dof.pop <- n - ncol(mat.cov.pop)
+beta.pop <- cbind(M.sim[,ind.1], M.sim[,-ind.1]) %*% mat.cov.pop %*% solve(t(mat.cov.pop) %*% mat.cov.pop)
+orthog.pop <- diag(n) - mat.cov.pop %*% solve(t(mat.cov.pop) %*% mat.cov.pop) %*% t(mat.cov.pop)
+Sigma.pop <- rowSums((cbind(M.sim[,ind.1], M.sim[,-ind.1]) %*% orthog.pop) * cbind(M.sim[,ind.1], M.sim[,-ind.1])) / dof.pop
+pvalues.pop <- 2 - 2 * pt( abs(beta.pop[,2]) / sqrt(Sigma.pop) / sqrt(var.pop[2,2]), df=dof.pop )
+qvalue.pop <- qvalue(pvalues.pop)
+fsr.pop <- false.sign.results(B.sim[,1], beta.pop[,2], qvalue.pop$qvalue)
+
+plot(sort(qvalue.pop$qvalue), fsr.pop$fdr, col="blue", type="l", xlab="Est. Q-value", ylab="True False Discovery Proportion"); abline(a=0,b=1,col="violet")
+```
+The estimate for $\Gamma$ works! Our method controls false discovery, while CATE does not. 
+
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

@@ -16,6 +16,7 @@ source("../R/SimSparseData.R")
 source("../R/EstimateBeta.R")
 source("../R/CrudeEstDim.R")
 source("../R/AnalyzeSimResults.R")
+source("../R/PartialEM.R")
 ```
 
 The purpose of this file is to investigate how cell type is related to the covariates. That is, do we have any hope in predicting cell type given an individuals covariate information. In order to apply our supervised method, we need the variance in cell type among unrelated individuals to be small, given the covariate information.
@@ -37,6 +38,7 @@ library('ruv')
 library('corpcor')
 library('cate')
 library('qvalue')
+library('Rmosek')
 ```
 
 
@@ -60,6 +62,8 @@ M <- as.matrix(M.orig[,2:(n.orig+1)])
 M <- M[,-ind.remove]
 Cov <- Cov.orig[-ind.remove,]
 n <- nrow(Cov)        #Number of individuals
+
+# hist(exp(M[,1])/(1 + exp(M[,1])), xlab="m/(m + u)", ylab="Density of CpG Sites", main="Histogram of Methylation", prob=T)
 ```
 
 Take covariates of interest: Sex, Group, Age. I will also only use Tcells, Eos and Neutrophils. The rest will be absorbed into the 'Other' category. 
@@ -1293,8 +1297,8 @@ analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+3, B.sim, L.sim)
 Here I assume $B$ is both sparse. The placenet of the 0's is independent in both $L$ and $B$. The standardized effect size for $L\Omega X$ is $(0.5, 0.5, 0.5)$. Something is happening with neutrophils...DO NOT CHANGE THIS CODE!!!
 ```{r SimSynthData_SparseLSparseB_Ind_Neutrophils_Original, echo=T, eval=T}
 set.seed(1988)
-n.sim <- 100   #Number of individuals
-r.sim <- 5     #Number of additional confounders
+n.sim <- 200   #Number of individuals
+r.sim <- 0     #Number of additional confounders
 K.sim <- 3     #Number of cell types
 d.sim <- 2     #Number of interesting covariates (either 0 or 1)
 pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
@@ -1311,7 +1315,7 @@ Omega.sim[1,3] <- 0.04
 Omega.sim[2,3] <- 0.02
 Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
 alpha.cell.sim <- (1/var.cell - 1)
-sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
+sigma.L.sim <- 2*c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
 
 sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
 
@@ -1408,8 +1412,8 @@ analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
 The below code simulates data with only 1 covariate of interest (I see the same effect with Neutrophils here that I do with 2 covariates).
 ```{r SimSynthData_SparseLSparseB_Ind_Neutrophils, echo=T, eval=T}
 set.seed(1988)
-n.sim <- 100   #Number of individuals
-r.sim <- 5     #Number of additional confounders
+n.sim <- 200   #Number of individuals
+r.sim <- 4     #Number of additional confounders
 K.sim <- 3     #Number of cell types
 d.sim <- 1     #Number of interesting covariates (either 0 or 1)
 pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
@@ -1428,7 +1432,7 @@ Omega.sim <- Omega.sim[,-c(2,4)]
 alpha.cell.sim <- (1/var.cell - 1)
 sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
 
-sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15)
 
 ##Simulate Data##
 SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
@@ -1453,7 +1457,7 @@ analyzed.data <- AnalyzeData2(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
 The below simulates data under a normal model with the same mean and variance as 'SimSynthData_SparseLSparseB_Ind_Neutrophils_Original' above. I want to see if the effect I am seeing is being caused by the size of teh cell type confounders or if it has something to do with the change in variance.
 ```{r SimSynthData_Neutrophils_Normal}
 set.seed(1988)
-n.sim <- 100   #Number of individuals
+n.sim <- 200   #Number of individuals
 r.sim <- 0     #Number of additional confounders
 K.sim <- 3     #Number of cell types
 d.sim <- 2     #Number of interesting covariates (either 0 or 1)
@@ -1471,7 +1475,7 @@ Omega.sim[1,3] <- 0.04
 Omega.sim[2,3] <- 0.02
 Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
 alpha.cell.sim <- (1/var.cell - 1)
-sigma.L.sim <- c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
+sigma.L.sim <- 2 * c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
 
 sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15, 0.15)
 
@@ -1487,6 +1491,10 @@ data.sim <- data.frame(cbind(X.sim, C.sim))
 colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
 
 analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
+plot(sort(analyzed.data$q.cell$qvalue), analyzed.data$fsr.cell$fdr, xlab="Est. Q-value", ylab="True FDR", main="FDR Plot With and Without Cell Type", type="l", ylim=c(0,0.3), xlim=c(0,0.3))
+lines(sort(analyzed.data$q.nocell$qvalue), analyzed.data$fsr.nocell$fdr, col="red")
+#legend("bottomright", legend=c("With Cell", "Without Cell"), fill=c("black", "red"))
+abline(a=0,b=1, col="violet")
 ```
 
 It appears that the phenomenon I am observing is ONLY due to the size of the confounding with respect to $L$ (if I make the effect for $L$ small and increase the sample size (or decrease the residual variance, they have the same effect), CATE does terribly). It does not depend on the factor analysis method that is used (I tried all 3 that were available in CATE). It has nothing to do with the additional confounders (I simulated data with $r = 0$ and got an answer that was just as bad).
@@ -1544,7 +1552,7 @@ The asymptotic theory for $L$ when cell type is unobserved is given in terms of 
 ```{r RegressionTowardMean}
 Q.tmp <- qr.Q(qr(X.sim), complete=T)
 R.tmp <- qr.R(qr(X.sim))
-Y.tilde.sim <- M.sim %*% Q
+Y.tilde.sim <- M.sim %*% Q.tmp
 alpha.ols <- 1/sum(analyzed.data$cate.nocell$Gamma * analyzed.data$cate.nocell$Gamma) * sum(analyzed.data$cate.nocell$Gamma * (Y.tilde.sim[,1:3] %*% solve(t(R.tmp)))[,3])
 plot(Mean.conf.true[,3], alpha.ols * analyzed.data$cate.nocell$Gamma, xlab="Mean of the True Confounder", ylab="Mean of the Confounder WITHOUT Cell Type Est. with OLS"); abline(a=0,b=1,col="red")
 ```
@@ -1597,8 +1605,255 @@ exp.L.size <- sigma.neutro * R.neutro
 exp.noise.size <- sqrt(0.15) / sqrt(n.sim)
 corr.size <- Omega.sim[3,3] / R.neutro
 ```
-The really interesting 
+Note that the expected size of $L$ and $\frac{\sigma}{\sqrt{n}}$ are roughly the same size. 
 
+## Apply Houseman
+
+```{r Houseman}
+B.naive <- M.sim %*% X.sim %*% solve(t(X.sim) %*% X.sim)
+E.naive <- M.sim - B.naive %*% t(X.sim)
+svd.naive <- svd(E.naive)
+u.house <- svd.naive$u[,1+r.sim]
+B.house <- B.naive - cbind(u.house) %*% (rbind(u.house) %*% B.naive)
+plot(B.sim[,2], B.house[,3]); abline(a=0,b=1,col="red")
+```
+Houseman tends to give slightly inflated values for $B$. This expected, since $L$ is difficult to estimate.
+
+## Proof of Principal for the Plugin Method
+
+```{r PluginPOP}
+f.cell <- 0.5       #Fraction of individuals whose cell type I observe
+n.1 <- floor(n.sim * f.cell)
+n.2 <- n.sim - n.1
+ind.1 <- sample(1:n.sim, n.1, replace=F)
+
+X.sim.1 <- X.sim[ind.1,]     #n.1 x d (includes intercept)
+X.sim.2 <- X.sim[-ind.1,]    #n.2 x d
+C.sim.1 <- C.sim[ind.1,]     #n.1 x K
+Y1.sim <- M.sim[,ind.1]      #p x n.1
+Y2.sim <- M.sim[,-ind.1]     #p x n.2
+qr.X1 <- qr(X.sim.1)
+qr.X2 <- qr(X.sim.2)
+Q.X1 <- qr.Q(qr.X1, complete=T)    #n.1 x n.1
+Q.X2 <- qr.Q(qr.X2, complete=T)    #n.2 x n.2
+R.X1 <- qr.R(qr.X1)
+R.X2 <- qr.R(qr.X2)
+
+Y1.sim.tilde <- Y1.sim %*% Q.X1
+Y2.sim.tilde <- Y2.sim %*% Q.X2
+F.mat.total <- t(C.sim.1) %*% Q.X1    #K x n.1
+F.mat.1 <- F.mat.total[,1:ncol(X.sim.1)]
+F.mat.2 <- F.mat.total[,(ncol(X.sim.1)+1):n.1]    #K x (n.1 - d)
+Z1.sim <- Y1.sim.tilde[,(ncol(X.sim.1)+1):n.1]
+Z2.sim <- Y2.sim.tilde[,(ncol(X.sim.2)+1):n.2]
+F.mat.sim <- F.mat.2   #Note there is no need to center these matrices (see likelihood in LaTeX)
+
+m1.sim <- n.1 - ncol(X.sim.1)
+m2.sim <- n.2 - ncol(X.sim.2)
+L.sim.start <- Y1.sim.tilde[,(ncol(X.sim.1)+1):n.1] %*% t(F.mat.2) %*% solve(F.mat.2 %*% t(F.mat.2))
+Lambda.start <- F.mat.sim %*% t(F.mat.sim) / m1.sim
+Sigma.start <- Sigma.sim
+
+EM.POP <- PEM(Z1=Z1.sim, Z2=Z2.sim, F.mat=F.mat.sim, L.0=L.sim.start, Lambda.0=Lambda.start, Gamma.0=NULL, Sigma.0=Sigma.start, m1=m1.sim, m2=m2.sim, tol = 3e-6)
+if (is.null(EM.POP$blup.V)) {
+  tmp.matrices <- Compute.Matrices(EM.POP$L, EM.POP$Lambda, EM.POP$Gamma, EM.POP$Sigma, Z1.sim, Z2.sim, F.mat.sim)
+  V.blup.sim <- EM.POP$Lambda %*% tmp.matrices$G1
+} else {
+  V.blup.sim <- EM.POP$blup.V
+}
+C.2.blup <- V.blup.sim %*% t(Q.X2[,(ncol(X.sim.2)+1):n.2]) + t(C.sim.1) %*% X.sim.1 %*% solve(t(X.sim.1) %*% X.sim.1) %*% t(X.sim.2)
+mat.cov.pop <- cbind( rbind(X.sim.1, X.sim.2), rbind(C.sim.1, t(C.2.blup)) )
+var.pop <- solve(t(mat.cov.pop) %*% mat.cov.pop)
+Sigma.pop <- EM.POP$Sigma
+
+beta.pop <- cbind(Y1.sim, Y2.sim) %*% mat.cov.pop %*% solve(t(mat.cov.pop) %*% mat.cov.pop)
+dof.pop <- n.sim - ncol(mat.cov.pop)
+pvalues.pop <- 2 - 2 * pt( abs(beta.pop[,3]) / sqrt(Sigma.pop) / sqrt(var.pop[3,3]), df=dof.pop )
+qvalue.pop <- qvalue(pvalues.pop)
+fsr.pop <- false.sign.results(B.sim[,2], beta.pop[,3], qvalue.pop$qvalue)
+lines(sort(qvalue.pop$qvalue), fsr.pop$fdr, col="blue")
+legend("bottomright", legend=c("With Cell", "Without Cell", "50% With Cell"), fill=c("black", "red", "blue"))
+```
+Using 50% of the cell type data works when the confounding is normal or Dirichlet, provided I know the parameter $\Gamma$. Estimating $\Gamma$ is difficult in practice.
+
+
+## Test Performance of EM Algorithm
+
+Here I will test the performance of my EM algorithm using my proposed starting point for $\Gamma$ (see LaTeX document).
+
+```{r SimSynthData_SparseLSparseB_Ind_Neutrophils_Dirichlet_EMtest, echo=T, eval=T}
+set.seed(1988)
+n.sim <- 200   #Number of individuals
+r.sim <- 4     #Number of additional confounders
+K.sim <- 3     #Number of cell types
+d.sim <- 2     #Number of interesting covariates (either 0 or 1)
+pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
+pi0.L.sim <- c(1, 1, 0.7)    #Sparsity in L
+LB.ind <- 1     #Are L and B independent? If no, the confounder Eos will have nonzero effects on the same sites as B[nonzero,1]
+mu.sigma.sim <- 0.15
+v.sigma.sim <- 0.03^2
+beta.sigma <- mu.sigma.sim/v.sigma.sim
+alpha.sigma <- beta.sigma * mu.sigma.sim     #Sigma ~ Gamma(alpha.sigma, beta.sigma)
+sigma.B.sim <- rep(mu.sigma.sim, d.sim)
+
+Omega.sim <- Omega.QL
+Omega.sim[1,3] <- 0.04
+Omega.sim[2,3] <- 0.02
+Omega.sim <- Omega.sim[1:K.sim, 1:(d.sim+1)]
+alpha.cell.sim <- (1/var.cell - 1)
+sigma.L.sim <- 1.5*c(1, 1, 1) / Omega.QL[1:3,1] * sqrt(0.15)
+
+sigma.r.sim <- c(0.15, 0.15, 0.15, 0.15)
+
+##Simulate Data##
+SimData <- Sim.Data(n.sim, r.sim, p, pi0.B.sim, pi0.L.sim, LB.ind, sigma.B.sim, sigma.L.sim, sigma.r.sim, Omega.sim, alpha.cell.sim, alpha.sigma, beta.sigma)
+M.sim <- SimData$M.sim
+X.sim <- SimData$X.sim
+L.sim <- SimData$L.sim
+B.sim <- SimData$B.sim
+Sigma.sim <- SimData$Sigma.sim
+Gamma.sim <- SimData$Gamma.sim
+C.sim <- SimData$C.sim    #n x K.all matrix
+data.sim <- data.frame(cbind(X.sim, C.sim))
+colnames(data.sim) <- c("Intercept", "Cov1", "Cov2", "Tcells", "Eos", "Neutro")
+
+##Analyze data with and without cell type data##
+
+#No cell type info#
+#conf.nocell.sim <- est.confounder.num(~Cov1 + Cov2, X.data=data.sim, Y=t(M.sim), method="ed", bcv.plot = T, rmax=10); r.nocell.sim <- conf.nocell.sim$r
+analyzed.data <- AnalyzeData(M.sim, data.sim, r.sim, r.sim+1, B.sim, L.sim)
+```
+
+Use the above simulation as input into the EM algorithm
+```{r TestEMStartingPoints}
+f.cell <- 0.7       #Fraction of individuals whose cell type I observe
+n.1 <- floor(n.sim * f.cell)
+n.2 <- n.sim - n.1
+ind.1 <- sample(1:n.sim, n.1, replace=F)
+
+###write simulations to disk###
+path.dir <- "/Users/Chris/Desktop/Uchicago/Nicolae/GitWork/CellType/data/Simulations_160608"
+
+#Y#
+path.Y.out <- file.path(path.dir, "Msim.txt")
+write.table(M.sim, path.Y.out, sep="\t", col.names=F, row.names=F, append=F, quote=F)
+
+#X and C#
+path.Cov.out <- file.path(path.dir, "Covsim.txt")
+write.table(data.sim, path.Cov.out, sep="\t", col.names=T, row.names=F, append=F, quote=F)
+
+#Omega#
+path.Omega.out <- file.path(path.dir, "Omegasim.txt")
+write.table(Omega.sim, path.Omega.out, sep="\t", col.names=T, row.names=T, append=F, quote=F)
+
+#L#
+path.L.out <- file.path(path.dir, "Lsim.txt")
+write.table(L.sim, path.L.out, sep="\t", col.names=F, row.names=F, append=F, quote=F)
+
+#B#
+path.B.out <- file.path(path.dir, "Bsim.txt")
+write.table(B.sim, path.B.out, sep="\t", col.names=F, row.names=F, append=F, quote=F)
+
+#Gamma#
+path.Gamma.out <- file.path(path.dir, "Gammasim.txt")
+write.table(Gamma.sim, path.Gamma.out, sep="\t", col.names=F, row.names=F, append=F, quote=F)
+
+#Sigma#
+path.Sigma.out <- file.path(path.dir, "Sigmasim.txt")
+write.table(rbind(Sigma.sim), path.Sigma.out, sep="\t", col.names=F, row.names=F, append=F, quote=F)
+
+#ind.1#
+path.ind1.out <- file.path(path.dir, "ind1sim.txt")
+write.table(rbind(ind.1), path.ind1.out, sep="\t", col.names=F, row.names=F, append=F, quote=F)
+
+################################################################################################
+
+X.sim.1 <- X.sim[ind.1,]     #n.1 x d (includes intercept)
+X.sim.2 <- X.sim[-ind.1,]    #n.2 x d
+C.sim.1 <- C.sim[ind.1,]     #n.1 x K
+Y1.sim <- M.sim[,ind.1]      #p x n.1
+Y2.sim <- M.sim[,-ind.1]     #p x n.2
+qr.X1 <- qr(X.sim.1)
+qr.X2 <- qr(X.sim.2)
+Q.X1 <- qr.Q(qr.X1, complete=T)    #n.1 x n.1
+Q.X2 <- qr.Q(qr.X2, complete=T)    #n.2 x n.2
+Q.X.total <- qr.Q(qr(X.sim), complete=T)    #n.sim x n.sim
+R.X1 <- qr.R(qr.X1)
+R.X2 <- qr.R(qr.X2)
+
+Y1.sim.tilde <- Y1.sim %*% Q.X1
+Y2.sim.tilde <- Y2.sim %*% Q.X2
+F.mat.total <- t(C.sim.1) %*% Q.X1    #K x n.1
+F.mat.1 <- F.mat.total[,1:ncol(X.sim.1)]
+F.mat.2 <- F.mat.total[,(ncol(X.sim.1)+1):n.1]    #K x (n.1 - d)
+Z1.sim <- Y1.sim.tilde[,(ncol(X.sim.1)+1):n.1]
+Z2.sim <- Y2.sim.tilde[,(ncol(X.sim.2)+1):n.2]
+F.mat.sim <- F.mat.2   #Note there is no need to center these matrices (see likelihood in LaTeX)
+
+m1.sim <- n.1 - ncol(X.sim.1)
+m2.sim <- n.2 - ncol(X.sim.2)
+
+fa.em.sim <- fa.em( t( M.sim %*% Q.X.total[,(ncol(X.sim)+1):n.sim] ), r=r.sim+1 )
+Sigma.use <- fa.em.sim$Sigma
+theta.start <- Starting.Points(Z1.sim, Z2.sim, F.mat.sim, Sigma.use, r.cell=r.sim)
+Gamma.start <- theta.start$Gamma.0.2
+L.start <- theta.start$L.0
+Lambda.start <- theta.start$Lambda.0
+
+EM.nosigma <- PEM(Z1.sim, Z2.sim, F.mat.sim, L=L.start, Lambda=Lambda.start, Gamma=Gamma.start, Sigma=Sigma.use, m1.sim, m2.sim, update.Gamma=F, update.Sigma=F, update.Lambda=F, tol=1e-6)
+rm(L.start); rm(Gamma.start); rm(Lambda.start); rm(theta.start)
+L <- EM.nosigma$L
+Gamma <- EM.nosigma$Gamma
+Lambda <- EM.nosigma$Lambda
+
+
+#EM.sigma <- PEM(Z1.sim, Z2.sim, F.mat.sim, L=L.start, Lambda=Lambda.start, Gamma=Gamma.start, Sigma=Sigma.use, m1.sim, m2.sim, update.Gamma=T, update.Sigma=T, update.Lambda=F, tol=5e-6)
+
+V.blup.sim <- EM.nosigma$blup.V
+W1.2.blup.sim <- EM.nosigma$blup.W1
+W2.2.blup.sim <- EM.nosigma$blup.W2
+
+###Estimate the correlation with Gamma###
+
+#Solve for alpha.1#
+QR.C.sim.1 <- qr(C.sim.1)
+Q.C.sim.1 <- qr.Q(QR.C.sim.1, complete=T)
+Q.C.sim.1.kern <- Q.C.sim.1[,(ncol(C.sim.1)+1):n.1]
+Y1.mc <- Y1.sim %*% Q.C.sim.1.kern
+X1.mc <- t(X.sim.1) %*% Q.C.sim.1.kern     #d x (n.1 - K) matrix
+Q.X1mc <- qr.Q(qr(t(X1.mc)), complete=T)
+R.X1mc <- qr.R(qr(t(X1.mc)))
+
+Y1Rmt.mc <- Y1.mc %*% Q.X1mc[,1:ncol(X.sim.1)] %*% solve(t(R.X1mc))
+b.ind.nonzero <- which(B.sim[,2] != 0)
+alpha.1 <- solve( t(Gamma[-b.ind.nonzero,]) %*% (Gamma[-b.ind.nonzero,] / Sigma.use[-b.ind.nonzero]), t(Gamma[-b.ind.nonzero,]) %*% (Y1Rmt.mc[-b.ind.nonzero,] / Sigma.use[-b.ind.nonzero]) )
+
+#Solve for alpha.2#
+Y2Rmt <- Y2.sim %*% X.sim.2 %*% solve(t(X.sim.2) %*% X.sim.2) - cbind(L[,3]) %*% rbind((t(C.sim.1) %*% X.sim.1 %*% solve(t(X.sim.1) %*% X.sim.1))[3,])
+alpha.2 <- solve( t(Gamma[-b.ind.nonzero,]) %*% (Gamma[-b.ind.nonzero,] / Sigma.use[-b.ind.nonzero]), t(Gamma[-b.ind.nonzero,]) %*% (Y2Rmt[-b.ind.nonzero,] / Sigma.use[-b.ind.nonzero]) )
+
+
+C.2.blup <- V.blup.sim %*% t(Q.X2[,(ncol(X.sim.2)+1):n.2]) + t(C.sim.1) %*% X.sim.1 %*% solve(t(X.sim.1) %*% X.sim.1) %*% t(X.sim.2)
+
+W1.blup <- EM.nosigma$blup.W1 %*% t(Q.X1[,(ncol(X.sim.1)+1):n.1]) + alpha.1 %*% t(X.sim.1)
+W2.blup <- EM.nosigma$blup.W2 %*% t(Q.X2[,(ncol(X.sim.2)+1):n.2]) + alpha.2 %*% t(X.sim.2)
+mat.cov.pop <- cbind( rbind(X.sim.1, X.sim.2), rbind(C.sim.1, t(C.2.blup)), rbind(t(W1.blup), t(W2.blup)) )
+var.pop <- solve(t(mat.cov.pop) %*% mat.cov.pop)
+#Sigma.pop <- EM.nosigma$Sigma
+dof.pop <- n.sim - ncol(mat.cov.pop)
+
+beta.pop <- cbind(Y1.sim, Y2.sim) %*% mat.cov.pop %*% solve(t(mat.cov.pop) %*% mat.cov.pop)
+orthog.pop <- diag(n.sim) - mat.cov.pop %*% solve(t(mat.cov.pop) %*% mat.cov.pop) %*% t(mat.cov.pop)
+Sigma.pop <- rowSums((cbind(Y1.sim, Y2.sim) %*% orthog.pop) * cbind(Y1.sim, Y2.sim)) / dof.pop
+pvalues.pop <- 2 - 2 * pt( abs(beta.pop[,3]) / sqrt(Sigma.pop) / sqrt(var.pop[3,3]), df=dof.pop )
+qvalue.pop <- qvalue(pvalues.pop)
+fsr.pop <- false.sign.results(B.sim[,2], beta.pop[,3], qvalue.pop$qvalue)
+lines(sort(qvalue.pop$qvalue), fsr.pop$fdr, col="blue")
+
+```
+The above uses an oracle estimate for $\Gamma$ and estimates $L$ using EM. We see that we can still control the FDR at a nominal level with our procedure with little loss in power. We do far better than using only the 70% of the individuals with observed cell type.
+
+I will now do the exact same as above, but will estimate $\Gamma$ from the data. It looks like controlling for the estimated BLUPs gives us a much better starting point than only using the fraction with observed cell type. We do marginally better in our starting point for $\Gamma$ when we project the cell types onto the top CCA component. The $R^2$ for the regressions onto $\text{diag}\left( \Gamma \Gamma^T \right)$ were 0.8546 for 70% cell, 0.8963 for 70% 3 cells + BLUP, 0.8993 for 70% projected cells + BLUP, 0.9039 for 100% cell. Note that we are overestimating the variance due to confounding by about 6.8% and underestimating the additional biological variance by about 2.3%. This may be more significant with additional confounders, which is what David observed in his simulations.
 
 ## Session information
 

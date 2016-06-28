@@ -1,0 +1,47 @@
+---
+title: "160601 Presentation Code"
+author: "Chris McKennan"
+date: "May 30, 2016"
+output: html_document
+---
+
+This document contains code snippets that are used to generate figures in the presentations I will give on 160601.
+
+```{r ConfoundingProblem}
+n <- 100
+p <- 10000
+sigma <- 1
+sigma.conf <- 1/2
+X <- cbind( rep(1,n), rbinom(n, size=1, 0.5) )
+B <- 0 * cbind(rep(0, p), rnorm(p))
+rho <- 1
+L <- rnorm(p) * rbinom(p, size=1, 0.2)
+C.resids <- sigma.conf * rnorm(n)
+C.corr <- rho * X[,2] + C.resids
+C.uncorr <- C.resids
+Y.corr  <- B %*% t(X) + cbind(L) %*% rbind(C.corr) + sigma * matrix(rnorm(n*p), nrow=p, ncol=n)
+Y.uncorr <- B %*% t(X) + cbind(L) %*% rbind(C.uncorr) + sigma * matrix(rnorm(n*p), nrow=p, ncol=n)
+
+X.mat <- cbind(X, C.corr)
+B.hat.corr <- Y.corr %*% X.mat %*% solve(t(X.mat) %*% X.mat)
+B.hat.uncorr <- Y.uncorr %*% X.mat %*% solve(t(X.mat) %*% X.mat)
+var.mat <- solve(t(X.mat) %*% X.mat)
+E.vec.corr <- Y.corr - B.hat.corr %*% t(X.mat)
+E.vec.uncorr <- Y.uncorr - B.hat.uncorr %*% t(X.mat)
+sigma.corr <- rowSums(E.vec.corr * E.vec.corr) / (n - 3)
+sigma.uncorr <- rowSums(E.vec.uncorr * E.vec.uncorr) / (n - 3)
+p.values.corr <- 2 - 2*pnorm( abs(B.hat.corr[,2])/sqrt(var.mat[2,2])/sqrt(sigma.corr) )
+p.values.uncorr <- 2 - 2*pnorm( abs(B.hat.uncorr[,2])/sqrt(var.mat[2,2])/sqrt(sigma.uncorr) )
+
+hist(p.values.corr, main="Histogram of P-values", xlab="P-value", ylab="frequency")
+hist(p.values.uncorr, main="Histogram of P-values", xlab="P-value", ylab="frequency")
+
+plot(B[,2], B.hat.corr[,2], xlab="True B", ylab="Estimated B", main="OLS Regression When C is Unobserved and Correlated with X"); abline(a=0,b=1,col="red")
+plot(B[,2], B.hat.uncorr[,2], xlab="True B", ylab="Estimated B", main="OLS Regression When C is Unobserved and NOT Correlated with X"); abline(a=0,b=1,col="red")
+```
+
+## Session information
+
+```{r info}
+sessionInfo()
+```

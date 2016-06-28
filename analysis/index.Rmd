@@ -16,3 +16,4 @@ title: "Home"
 ## Simulate Data with Correlated Confounders
 
 *  [Why Robust Regression can Fail](AmishHutterite_CellType.html)
+*  [Understanding Errors in Confounding](UnderstandingConfouningSimulations.html)
