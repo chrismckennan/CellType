@@ -1,0 +1,63 @@
+\documentclass{article}
+
+\usepackage{enumerate}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bbm}
+\usepackage{graphicx}
+\usepackage[english]{babel}
+\usepackage[letterpaper, portrait, margin=1.0in]{geometry}
+\graphicspath{ {~/Desktop/Uchicago/STAT_347/HW/HW2/QuestionA3} }
+\usepackage{mathrsfs}
+\usepackage{breqn}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{txfonts}
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+\usepackage{units}
+\DeclareMathOperator{\Tr}{Tr}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\usepackage{setspace}
+\newcommand{\indep}{\rotatebox[origin=c]{90}{$\models$}}
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}%
+\DeclarePairedDelimiter\norm{\lVert}{\rVert}%
+
+% Swap the definition of \abs* and \norm*, so that \abs
+% and \norm resizes the size of the brackets, and the 
+% starred version does not.
+\makeatletter
+\let\oldabs\abs
+\def\abs{\@ifstar{\oldabs}{\oldabs*}}
+%
+\let\oldnorm\norm
+\def\norm{\@ifstar{\oldnorm}{\oldnorm*}}
+\makeatother
+
+\begin{document}
+
+
+\section*{Outline}
+\begin{enumerate}
+\item Write out and talk about model for the data (maybe discuss M vs. Beta value here)
+\item Discuss methods without cell type data (i.e. Houseman and CATE).
+\item When do these perform well?
+	\begin{enumerate}
+	\item Standardized effect size for $L$, taking into account variability $\Xi$.
+	\item Discuss $\frac{1}{p}\Gamma^T \Sigma^{-1}\Gamma$ result in Bai and Li, i.e. how informative methylation data are for cell type.
+	\item Figures: simulation results. We will ALWAYS underestimate $\Omega$ when data are not informative. Effect on results is small when $\Omega$ is small (can we prove this?)
+	\item Give Amish/Hutterite data example. Talk about size of $\frac{1}{p}\Gamma^T \Sigma^{-1}\Gamma$, MAJOR differences in the estimates for $\pi_0$, the fact that the data suggest that there is confounding (p-value for $\alpha$). Large difference in $\hat{\pi}_0$ along with the fact that $\frac{1}{p}\Gamma^T \Sigma^{-1}\Gamma = O\left( \frac{1}{n} \right)$ seem to indicate the data are not informative enough to estimate the correlation between $C$ and $X$. 
+	\end{enumerate}
+\item If data are not informative for cell type, we need another method to estimate the correlation between $C$ and $X$. Obvious alternative: collect cell type or use training data to estimate the correlation between $C$ and $X$.
+\item In some circumstances, we can do well with only partially observed data (in the absence of other confounders). Plot simulation figures. When does this happen? What happens when we have additional confounders?
+\item Recommendations: if you have strong prior assumptions that there are additional confounders that you can measure, it is always a good idea to measure them.
+	\begin{enumerate}
+	\item Talk about how large correlation needs to be to start making serious errors. If standardized correlation is small, maybe you don't need to worry about it and can estimate it from the data.
+	\item With strong prior knowledge, it is always a good idea to include covariates that may have an effect on response and are correlated with the variable of interest.
+	\end{enumerate}
+\end{enumerate}
+
+
+\end{document}
