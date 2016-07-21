@@ -11,6 +11,7 @@
 \usepackage{mathrsfs}
 \usepackage{breqn}
 \usepackage{mathtools}
+\usepackage{rotating}
 \usepackage{bm}
 \usepackage{txfonts}
 \DeclarePairedDelimiter\ceil{\lceil}{\rceil}
@@ -22,8 +23,10 @@
 \DeclareMathOperator*{\argmax}{arg\,max}
 \usepackage{setspace}
 \newcommand{\indep}{\rotatebox[origin=c]{90}{$\models$}}
+\DeclareMathOperator{\E}{\mathbb{E}}
 \DeclarePairedDelimiter\abs{\lvert}{\rvert}%
 \DeclarePairedDelimiter\norm{\lVert}{\rVert}%
+
 
 % Swap the definition of \abs* and \norm*, so that \abs
 % and \norm resizes the size of the brackets, and the 
@@ -59,5 +62,270 @@
 	\end{enumerate}
 \end{enumerate}
 
+\section{Notation}
+\begin{itemize}
+\item All matrices (including vectors) are bold and all vectors are column vectors, unless otherwise stated.
+\item Throughout the paper, the matrix $\bm{X} = \bm{X}_{d \times n} \in \mathbb{R}^{d \times n}$ contains $d$ covariates of interest (including an intercept) measured on $n$ individuals. For example, in the real data example $d = 2$ where one covariate is the intercept and the other is the Amish vs. Hutterite contrast.
+\item Cell type proportions for $K$ cells measured on $n$ individuals is given as the matrix $\bm{C} = \bm{C}_{K \times n} \in [0-1]^{K \times n}$. 
+\end{itemize}
+
+\section{The Model}
+Let $\bm{Y}_{p \times n}$ be the methylation response measured on $p$ CpG sites across $n$ independent individuals, $\bm{X}_{d \times n} = \left[ \begin{matrix}
+\vec{x}_1 & \cdots & \vec{x}_n
+\end{matrix} \right]$ the matrix of $d$ covariates of interest (i.e. disease status, sex, etc.) measured on the same $n$ individuals and $\bm{C}_{K \times n} = \left[ \begin{matrix}
+\vec{c}_1 & \cdots & \vec{c}_n
+\end{matrix} \right]$ be the cell composition matrix for $K$ cell types across the $n$ individuals  Assuming that methylation status is ONLY affect by the covariate(s) of interest $\bm{X}$ and cell type composition $\bm{C}$, full data model for $\bm{Y}$ is then:
+\begin{equation}
+\bm{Y}_{p \times n} = \bm{B}_{p \times d}\bm{X}_{d \times n} + \bm{L}_{p \times K}\bm{C}_{K \times n} + \bm{E}_{p \times n}
+\end{equation}
+Where $\bm{E}_{p \times n} \sim MN_{p \times n}\left( \bm{0}_{p\times n}, \bm{\Sigma}_{p \times p} = \text{diag}\left( \sigma_1^2, \ldots, \sigma_p^2 \right), I_{n} \right)$, $\bm{L} = \left[ \begin{matrix}
+\bm{\ell}_1^T\\
+\vdots\\
+\bm{\ell}_p^T
+\end{matrix} \right]$ and $\bm{B} = \left[ \begin{matrix}
+\bm{\beta}_1^T\\
+\vdots\\
+\bm{\beta}_p^T
+\end{matrix} \right]$. That is,
+\begin{equation}
+\bm{Y} \mid \left( \bm{X}, \bm{C} \right) \sim MN_{p \times n}\left( \bm{B}\bm{X} + \bm{L}\bm{C}, \bm{\Sigma}, I_n \right)
+\end{equation}
+We are interested in estimating the effect $\bm{\beta}_i$ for each CpG site $i = 1, \ldots, p$.\\
+\indent However, sometimes we do not have access to the cell type composition data. If cell type is uncorrelated with the covariate(s) of interest, we can account for it using factor analysis correction techniques (e.g. SVA). When cell type and the covariate(s) of interest are correlated, we assume that
+\begin{equation}
+\bm{C}_{K \times n} = \bm{\Omega}_{K \times d}\bm{X}_{d \times n} + \bm{\Xi}_{K \times n}, \text{, } \bm{\Xi} = \left[ \begin{matrix}
+\vec{\xi}_1 & \cdots & \vec{\xi}_n
+\end{matrix} \right]
+\end{equation}
+\begin{equation}
+\bm{\Xi} \sim MN_{K \times n}\left( \bm{0}, \Lambda, I_n \right)
+\end{equation}
+Note that since cell type composition is proportion data, the variance $E\left( \vec{\xi}_i \vec{\xi}_i^T\mid \vec{x}_i\right)$ is a function of the mean $E\left( \vec{c}_i \mid \vec{x}_i \right)$, which is not captured by our assumptions on $\bm{\Xi}$. We show by simulation that we can ignore the mean-variance relationship and still perform accurate inference on $\hat{\bm{B}}$.\\
+\indent When $\bm{C}$ is unobserved, we can write the full data model as
+\begin{equation}
+\bm{Y} = \bm{B}\bm{X} + \bm{L} \bm{\Omega} \bm{X} + \bm{L}\bm{\Xi} + \bm{E} = \bm{B}\bm{X} + \tilde{\bm{L}} \tilde{\bm{\Omega}} \bm{X} + \tilde{\bm{L}}\tilde{\bm{\Xi}} + \bm{E}
+\end{equation}
+where $\tilde{\bm{L}} = \left[ \begin{matrix}
+\tilde{\bm{\ell}}_1^T\\
+\vdots\\
+\tilde{\bm{\ell}}_p^T\\
+\end{matrix} \right] = L\Lambda^{1/2}$, $\tilde{\Omega} = \Lambda^{-1/2}\Omega$ and $\tilde{\bm{\Xi}} \sim MN_{K \times n}\left( \bm{0}, I_K, I_n \right)$. The probability model is then
+\begin{equation}
+\bm{Y} \mid \bm{X} \sim MN_{p \times n}\left( \bm{B}\bm{X} + \tilde{\bm{L}} \tilde{\bm{\Omega}} \bm{X}, \tilde{\bm{L}} \tilde{\bm{L}}^T + \bm{\Sigma}, I_n \right).
+\end{equation}
+
+
+
+\section{Estimation Methods With Unobserved Cell Type}
+We start by assuming $\bm{X}$ and cell type $\bm{C}$ are both observed. We see from equation $\bm{3}$ that if we were to estimate $\tilde{\bm{\Omega}}$ using OLS (assuming $\bm{\Lambda}$ was known), we would get
+\begin{equation}
+\tilde{\bm{\Omega}}^{(\text{OLS})} = \bm{\Lambda}^{-1/2}\bm{C}\bm{X}^T \left( \bm{X}\bm{X}^T \right)^{-1} = \tilde{\bm{\Omega}} + \tilde{\bm{\Xi}}\bm{X}^T \left( \bm{X}\bm{X}^T \right)^{-1}.
+\end{equation} 
+Note that there are two sources of empirical correlation. The first is due to the true correlation $\bm{\Omega}$ and the second is due to the residual $\tilde{\bm{\Xi}}\bm{X}^T \left( \bm{X}\bm{X}^T \right)^{-1}$, which we will refer to as spurious correlation. When $\bm{C}$ is observed (i.e. $\bm{\Omega} \bm{X} + \bm{\Xi}$ is observed), the variance of the OLS estimate for $\bm{\beta}_i$ is
+\begin{equation}
+\text{Var}\left( \hat{\bm{\beta}}_i^{(\text{OLS})} \right) = \sigma_i^2\left( \left[ \bm{X}\bm{X}^T \right]^{-1} + \left( \tilde{\bm{\Omega}}^{(\text{OLS})}\right)^T \left[ \tilde{\bm{\Xi}} P_{\bm{X}^T}^{\perp}\tilde{\bm{\Xi}}^T \right]^{-1}\tilde{\bm{\Omega}}^{(\text{OLS})} \right)
+\end{equation} 
+which by Gauss-Markov is the smallest variance possible among all unbiased estimators for $\bm{\beta}_i$. If cell type $\bm{C}$ is NOT observed, it stands to reason that our goal should be to estimate $\tilde{\bm{\Xi}} P_{\bm{X}^T}^{\perp}\tilde{\bm{\Xi}}^T$ and $\tilde{\bm{\Omega}}^{(\text{OLS})} = $ true correlation $+$ spurious correlation from the methylation data.\\
+\indent Luckily, considerable attention has been given to developing methods to estimate $\bm{B}$ in the presence of confounding that is correlated with the design matrix $\bm{X}$ (LEAPP, Houseman et al., CATE). Using \textbf{Equ. 5} as a reference, all three methods assume that $\tilde{\bm{\Xi}}$ is independent of $\bm{X}$ and that $\bm{B}$ is sparse. That is, the covariate of interest affects only a small fraction of the CpG sites. Both of these assumptions tend to hold in real data. To get estimates $\hat{\bm{B}} = \left[ \begin{matrix}
+\hat{\bm{\beta}}_1^T\\
+\vdots\\
+\hat{\bm{\beta}}_p^T
+\end{matrix} \right]$ and $\hat{\text{Var}}\left( \hat{\bm{\beta}}_i \right)$ for CpG sites $i = 1, \ldots, p$, all three methods use the following general procedure:
+\begin{enumerate}
+	\item Compute $\hat{\bm{\tilde{L}}}$ and $\hat{\bm{\Sigma}}$, estimates for $\bm{L}$ and $\bm{\Sigma}$. This is done by regressing out $\bm{X}$ from \textbf{Equ. 5} and then performing factor analysis on the residual matrix $\bm{Y}P_{X^T}^{\perp}$.
+	\item Compute $\hat{\tilde{\bm{\Xi}}}^{\perp}$, an estimate for $\tilde{\bm{\Xi}} P_{X^T}^{\perp}$. Two possibilities for $\hat{\tilde{\bm{\Xi}}}^{\perp}$ are the BLUP for $\tilde{\bm{\Xi}} P_{X^T}^{\perp}$ and the GLS estimate $\left( \hat{\bm{\tilde{L}}}^T \hat{\bm{\Sigma}}^{-1}\hat{\bm{\tilde{L}}} \right)^{-1} \hat{\bm{\tilde{L}}}^T \hat{\bm{\Sigma}}^{-1} \bm{Y} P_{X^T}^{\perp}$.	
+	\item Compute $\hat{\tilde{\bm{\Omega}}}$, an estimate for $\tilde{\bm{\Omega}}^{(\text{OLS})}$ by regressing $\bm{Y} \bm{X}^T \left( \bm{X}\bm{X}^T \right)^{-1}$ onto $\hat{\bm{\tilde{L}}}$. The methods differ in the way they find $\hat{\tilde{\bm{\Omega}}}$.
+		\begin{enumerate}
+		\item Houseman uses the the GLS estimate for $\tilde{\bm{\Omega}}^{(\text{OLS})}$, $\hat{\tilde{\bm{\Omega}}} = \left( \hat{\bm{\tilde{L}}}^T \hat{\bm{\Sigma}}^{-1}\hat{\bm{\tilde{L}}} \right)^{-1} \hat{\bm{\tilde{L}}}^T \hat{\bm{\Sigma}}^{-1} \bm{Y} \bm{X}^T \left( \bm{X}\bm{X}^T \right)^{-1}$. If $\bm{B} \neq \bm{0}$, this is sub-optimal since $\E\left[ \bm{Y}\bm{X}^T \left( \bm{X}\bm{X}^T \right)^{-1} \mid \bm{X}, \tilde{\bm{\Xi}} \right] = \bm{B} + \bm{\tilde{L}}\left( \tilde{\bm{\Omega}} + \tilde{\bm{\Xi}}\bm{X}^T \left( \bm{X}\bm{X}^T \right)^{-1}  \right)$, meaning the GLS estimate will be contaminated by the non-zero entries of $\bm{B}$.
+		\item CATE, LEAPP use a robust regression to find $\hat{\tilde{\bm{\Omega}}}$. This is a more appropriate estimator when $\bm{B} \neq \bm{0}$. 
+		\end{enumerate}
+	\item Estimate $\bm{B}$ by regressing $\bm{Y}$ onto $\left[ \begin{matrix}
+	\bm{X}\\
+	\hat{\tilde{\bm{\Omega}}} \bm{X} + \hat{\tilde{\bm{\Xi}}}^{\perp}
+\end{matrix} \right]$. We then set 
+\begin{equation}
+\hat{\text{Var}}\left( \hat{\bm{\beta}}_i \right) = \hat{\sigma}_i^2 \left( \left[ \bm{X}\bm{X}^T \right]^{-1} + \hat{\tilde{\bm{\Omega}}}^T\left[ \hat{\tilde{\bm{\Xi}}}^{\perp}\left( \hat{\tilde{\bm{\Xi}}}^{\perp} \right)^T \right]^{-1} \hat{\tilde{\bm{\Omega}}} \right)
+\end{equation} 
+\end{enumerate}
+
+\indent These methods (CATE and LEAPP in particular) are attractive because one can use all of the CpG sites to estimate the confounding in the data without actually having to measure the confounding (if that is at all possible). They tend to perform well when the data are informative enough to estimate $\bm{\tilde{L}}$ (simulation plots when data are informative enough to estimate cell type?). However, if our estimate $\hat{\tilde{\bm{\Omega}}}$ underestimates the true correlation in the experiment, not only will we underestimate the variance for $\hat{\bm{\beta}}_i$ in \textbf{Equ. 9}, but our estimates $\hat{\bm{\beta}}_i$ will be biased for $\bm{\beta}_i$.
+
+\section{When can we use these methods to correct for cell type and other confounding?}
+The fidelity of any (is this word too strong) cell type correction method depends on how informative the available methylation data are for estimating cell type heterogeneity. If $\frac{1}{n}\bm{X}\bm{X}^T \to \bm{\Sigma}_{X} \succ 0$ and $\bm{\tilde{L}}$ is fixed, Hastie (cite paper) proves that under suitable conditions on $\bm{B}, \bm{\tilde{L}}$ and $\bm{\Sigma}$,
+\begin{equation}
+n\hat{\text{Var}}\left( \hat{\bm{\beta}}_i \right) = \hat{\sigma}_i^2 \left( \left[ \frac{1}{n}\bm{X}\bm{X}^T \right]^{-1} + \hat{\tilde{\bm{\Omega}}}^T\left[ \frac{1}{n}\hat{\tilde{\bm{\Xi}}}^{\perp}\left( \hat{\tilde{\bm{\Xi}}}^{\perp} \right)^T \right]^{-1} \hat{\tilde{\bm{\Omega}}} \right) \stackrel{P}{\to} \sigma_i^2 \left( \bm{\Sigma}_X^{-1} + \bm{\Omega}^T \bm{\Lambda}^{-1} \bm{\Omega} \right)
+\end{equation}
+which is exactly what we would expect had we measured cell type. We also show through simulation that for $n$ large enough and $\bm{\tilde{L}}$ fixed, the above procedure with robust regression tends to control false discovery rate at a nominal level (show plots).\\
+\indent However, the methylation data may not be informative enough to estimate and correct for the effects of cell type heterogeneity for small to moderate sample sizes. Recall that when we correct for cell type we must first compute $\hat{\bm{\tilde{L}}}$, and use that noisy estimate of $\bm{\tilde{L}}$ to regress $\bm{Y}\bm{X}^T \left( \bm{X}\bm{X}^T \right)^{-1}$ onto $\hat{\bm{\tilde{L}}}$. If the residual $\hat{\bm{\tilde{L}}} - \bm{\tilde{L}}$ is large, then our estimate $\hat{\tilde{\bm{\Omega}}}$ will be shrunk closer to $\bm{0}$. The intuition here is that if $\hat{\bm{\tilde{L}}}$ was just a random matrix, the regression $\bm{Y}\bm{X}^T \left( \bm{X}\bm{X}^T \right)^{-1} \sim \hat{\bm{\tilde{L}}}$ will give regression coefficients that are very close to 0. If our estimate for $\hat{\tilde{\bm{\Omega}}}$ is too small, we will underestimate the variance of $\hat{\bm{\beta}_i}$ and any inference we do will be anti-conservative.\\
+\indent To study this phenomenon, suppose $\bm{B} = \bm{0}$. That is, variability in the data is caused only by cell type heterogeneity which may be correlated with the variable of interest:
+\begin{equation}
+\bm{Y} = \tilde{\bm{L}}\tilde{\bm{\Omega}}\bm{X} + \tilde{\bm{L}}\tilde{\bm{\Xi}} + \bm{E}.
+\end{equation}
+If we let $\bm{E}^* = \left( \tilde{\bm{L}} - \hat{\tilde{\bm{L}}} \right) \left(\tilde{\bm{\Omega}}\bm{X} + \tilde{\bm{\Xi}} \right) +  \bm{E}$, we can rewrite $\bm{11}$ as
+\begin{equation}
+\bm{Y} = \hat{\tilde{\bm{L}}}\left(\tilde{\bm{\Omega}}\bm{X} + \tilde{\bm{\Xi}} \right) + \bm{E}^*.
+\end{equation} 
+If the residual $\hat{\bm{\tilde{L}}} - \bm{\tilde{L}}$ is large in comparison to $\hat{\tilde{\bm{L}}}$, we have no way of separating the effect $\hat{\tilde{\bm{L}}}\left(\tilde{\bm{\Omega}}\bm{X} + \tilde{\bm{\Xi}} \right)$ from the error $\bm{E}^*$, which causes our estimate $\hat{\tilde{\bm{\Omega}}}$ to shrink toward $\bm{0}$.\\
+\indent If cell type were known, (i.e. if $\tilde{\bm{\Omega}}\bm{X} + \tilde{\bm{\Xi}}$ were known), we can estimate $\tilde{\bm{L}}$ using OLS where the estimates $\hat{\tilde{\bm{\ell}}}_i^{(\text{OLS})} \approx \tilde{\bm{\ell}}_i \pm 1.96\frac{\sigma_i}{\sqrt{n}}$. Surprisingly, even if we do not know cell type, we can use factor analysis to to get an estimate $\hat{\tilde{\bm{\ell}}}_i^{(\text{FA})} \approx \tilde{\bm{\ell}}_i \pm 1.96\frac{\sigma_i}{\sqrt{n}}$! Therefore, the effect $\hat{\tilde{\bm{L}}}\left(\tilde{\bm{\Omega}}\bm{X} + \tilde{\bm{\Xi}} \right)$ is roughly equal to or smaller than the noise $\bm{E}^*$ if, on average, $\tilde{\bm{\ell}}_i \leq O\left( \frac{\sigma_i}{\sqrt{n}} \right)$ for CpG sites $i = 1, \ldots, p$. Another way of saying this is $\frac{1}{p}\tilde{\bm{L}}^T \bm{\Sigma}^{-1}\tilde{\bm{L}} \leq O\left( \frac{1}{n} \right)$. From here on out, we will define
+\begin{equation}
+\mathcal{I}_{\text{confounding}} = \frac{1}{p}\tilde{\bm{L}}^T \bm{\Sigma}^{-1}\tilde{\bm{L}}
+\end{equation}
+as the confounding information matrix. This is not to be confused with the Fisher Information matrix, although it has a similar role. $\mathcal{I}_{\text{confounding}}$ determines how much information about the confounding (in our case cell type heterogeneity) can be gleaned from the observed methylation data. When this information is on the order of the statistical error (i.e. when $\mathcal{I}_{\text{confounding}} \leq O\left( \frac{1}{n} \right)$), we have difficulty estimating and correcting for cell type heterogeneity.\\
+\indent We can illustrate the effect of the size of $\mathcal{I}_{\text{confounding}}$ on the extent of the shrinkage in $\hat{\tilde{\bm{\Omega}}}$ with a simple simulation. We first fix the effect due to cell type, $\tilde{\bm{L}}$, and the residual variability, $\bm{\Sigma}$, s.t. $\frac{1}{p}\tilde{\bm{L}}^T \bm{\Sigma}^{-1}\tilde{\bm{L}} = \frac{\alpha}{n}I_K$. We also fix a $2 \times n$ design matrix $\bm{X} = \left[ \begin{matrix}
+\text{Intercept}\\
+\text{Disease Status (0's and 1's)}
+\end{matrix} \right]$. We then simulate data according to \textbf{Equ. 11} by varying the observed correlation between cell type and covariate of interest ($\tilde{\bm{\Omega}}^{(\text{OLS})}$) and see how significantly $\hat{\tilde{\bm{\Omega}}}$ underestimates the observed correlation. Below are our results:\\
+\includegraphics[scale=0.4]{UnderestimatingOmega_Multipliers.jpeg}\\
+\\
+It is clear that the less informative the methylation data are for cell type (i.e. the smaller $\frac{1}{p}\tilde{\bm{L}}^T \bm{\Sigma}^{-1}\tilde{\bm{L}}$ is), the more difficult it is to estimate the observed correlation between cell type and the covariate(s) interest.\\
+\indent Based on the above results, we can identify realistic scenarios when it will be difficult to estimate the correlation between cell type and the covariate(s) of interest. The first is when the non-standardized cell type effect $\bm{L}$ is small, causing only subtle differences in methylation between cell types. This can occur when cells are taken from the same tissue with little observable cellular heterogeneity. Another related possibility is that the majority of CpG sites have the same methylation status across cell types and only a few CpG's have different methylation patterns across cells. If the cell type effects for only a few of the CpG sites are large, then underestimating the variance given by\textbf{equ. 9} can have serious repercussions on the accuracy of any false discovery procedure (need to add an FDR plot). A third may occur when the covariate(s) of interest explains the majority of the variability in cellular heterogeneity. For example, if our covariate of interest is asthma status and everyone with asthma has one cell type composition and everyone without asthma has a different cell type composition, then there is no way to distinguish the cell type effect from the asthma effect and it is impossible to estimate $\tilde{\bm{L}}$, regardless of the sample size. Mathematically speaking, this occurs when the residual variance $\bm{\Lambda}$ from $\bm{3}$ and $\bm{4}$ is small, meaning $\bm{\tilde{L}} = \bm{L}\bm{\Lambda}^{1/2}$ is small.
+
+\section{Real Data Example}
+Our motivating example came from whole-blood methylation data collected from individuals in the Amish and Hutterite communities, two founder populations with little genetic diversity. The goal of this experiment was to study any potential differences in the two population's methylome. We quantified the methylation from $p = 327,273$ CpG sites from 30 Amish and 30 Hutterite adolescents (ages 7-14) using 450K Illumina chips and measured the whole-blood cell composition for 29 of the Amish and all 30 of the Hutterite adolescents using flow cytometry. The design matrix for this experiment was
+\begin{equation}
+\bm{X} = \left[ \begin{matrix}
+\text{Intercept}\\
+\text{Amish (1) or Hutterite (0)}
+\end{matrix}\right]
+\end{equation}
+and the cell type composition matrix was
+\begin{equation}
+\bm{C} = \left[ \begin{matrix}
+\text{\begin{turn}{90}
+Tcells
+\end{turn}} &
+\text{\begin{turn}{90}
+Bcells
+\end{turn}} &
+\text{\begin{turn}{90}
+Eosinophils
+\end{turn}} &
+\text{\begin{turn}{90}
+Neutroophils
+\end{turn}} &
+\text{\begin{turn}{90}
+Monocytes
+\end{turn}}
+\end{matrix} \right].
+\end{equation}
+\\
+\indent Since we have access to whole-blood cell composition for 59 of the 60 study subjects, we have the luxury of comparing inference on $\bm{B}$ when cell type is and is not observed (we only use the $n=59$ subjects with observed cell type to compare inference). When we assumed cell type was observed, we modeled the data as
+\begin{equation}
+\bm{Y}_{p \times n} = \bm{B}_{p \times d}\bm{X}_{d \times n} + \bm{L}_{p \times K}\bm{C}_{K \times n} + \bm{\Gamma}_{p \times r}\bm{V}_{r \times n} + \bm{E}_{p \times n}
+\end{equation}
+\begin{equation}
+\bm{B} = \left[ \begin{matrix}
+\mu_1 & b_{(A-H)_1}\\
+\vdots & \vdots\\
+\mu_p & b_{(A-H)_p}
+\end{matrix} \right]
+\end{equation}
+where the term $\bm{\Gamma}_{p \times r}\bm{V}_{r \times n}$ was included to take into account the effect of unmeasured covariates $\bm{V}$ and $\mu_i$ and $b_{(A-H)_i}$ are the global mean and Amish-Hutterite contrast at CpG $i$. We further assumed that $\bm{V} \sim MN_{r \times n}\left( \bm{\alpha}_{r \times d}\bm{X}_{d \times n}, I_r, I_n \right)$. For simplicity we set $\bm{\alpha} = \bm{0}$, although the inference we did on $\bm{B}$ would not change if we assumed $\bm{\alpha} \neq \bm{0}$ because we needed to account for any spurious correlation between the unmeasured covariates $\bm{V}$ and $\bm{X}$. In order to correct for cell type heterogeneity in this scenario, we simply regressed out $\bm{C}$, meaning the cell type-corrected model was
+\begin{equation}
+\bm{Y}^{(c)} = \bm{B}\bm{X}^{(c)} + \bm{\Gamma}\bm{V}^{(c)} + \bm{E}^{(c)}
+\end{equation}
+\begin{equation}
+\bm{Y}^{(c)} = \bm{Y}P_{\bm{C}^T}^{\perp}, \quad \bm{V}^{(c)} = \bm{Y}P_{\bm{C}^T}^{\perp}, \quad \bm{E}^{(c)} = \bm{E}P_{\bm{C}^T}^{\perp}
+\end{equation}
+We estimated $r=4$ additional unobserved factors using BCV (cite Wang, Hastie paper) and used CATE to compute any spurious correlation between $\bm{V}^{(c)}$ and $\bm{X}^{(c)}$, as well as $\hat{\bm{B}} = \left[ \begin{matrix}
+\hat{\mu}_1^{(\text{cell})} & \hat{b}_{(A-H)_1}^{(\text{cell})}\\
+\vdots & \vdots\\
+\hat{\mu}_p^{(\text{cell})} & \hat{b}_{(A-H)_p}^{(\text{cell})}
+\end{matrix} \right]$. Our test statistic used to infer the difference in methylation at CpG site $i$ between Amish and Hutterite adolescents was then
+\begin{equation}
+\hat{t}_i^{(\text{cell})} = \frac{\hat{b}_{(A-H)_i}^{(\text{cell})}}{\sqrt{\hat{\text{Var}}\left( \hat{b}_{(A-H)_i}^{(\text{cell})} \right)}}
+\end{equation}
+where $\hat{\text{Var}}\left(\hat{b}_{(A-H)_1}^{(\text{cell})} \right)$ was computed according to \textbf{equ. 9}. We used a $t$-distribution with $n - K - d - r = 48$ degrees of freedom to compute p-values at each CpG site $i = 1, \ldots, p$ to test for differential methylation.\\ 
+\indent When cell type is UNOBSERVED, we combined unmeasured covariates $\bm{C}$ and $\bm{V}$ in \textbf{equ. 15} and modeled the data as
+\begin{equation}
+\bm{Y}_{p \times n} = \bm{B}_{p \times d}\bm{X}_{d \times n} + \tilde{\bm{L}}_{p \times K'}\tilde{\bm{\Omega}}_{K' \times d}\bm{X}_{d \times n} + \tilde{\bm{L}}_{p \times K'}\tilde{\bm{\Xi}}_{K' \times n} + \bm{E}_{p \times n}
+\end{equation}
+where $\tilde{\bm{\Omega}} = \left[ \begin{matrix}
+\bm{\Lambda}^{-1/2}\bm{\Omega}\\
+\bm{\alpha}
+\end{matrix} \right]$, $\bm{\tilde{L}} = \left[ \begin{matrix}
+\bm{L}\Lambda^{1/2} & \bm{\Gamma}
+\end{matrix} \right]$ and $\tilde{\bm{\Xi}} = \left[ \begin{matrix}
+\Lambda^{-1/2}\bm{\Xi}\\
+\bm{V}
+\end{matrix} \right]$. We used the exact same procedure as above to estimate $K' = 6$, $\hat{\tilde{\bm{\Omega}}}$ and $\hat{\bm{B}} = \left[ \begin{matrix}
+\hat{\mu}_1^{(\text{no cell})} & \hat{b}_{(A-H)_1}^{(\text{no cell})}\\
+\vdots & \vdots\\
+\hat{\mu}_p^{(\text{no cell})} & \hat{b}_{(A-H)_p}^{(\text{no cell})}
+\end{matrix} \right]$. And just as we did when we observed each individual's whole-blood cell composition, we let
+\begin{equation}
+\hat{t}_i^{(\text{no cell})} = \frac{\hat{b}_{(A-H)_i}^{(\text{no cell})}}{\sqrt{\hat{\text{Var}}\left( \hat{b}_{(A-H)_i}^{(\text{no cell})} \right)}}
+\end{equation}
+and computed p-values to test for differential methylation between both groups using a $t$-distribution with $n - d - K' = 51$ degrees of freedom. Below are p-value histrograms that compare our results when we assume cell composition are and are not observed:\\
+\includegraphics[scale=0.4]{AmishHutterite_CellPvalues.jpeg}
+\includegraphics[scale=0.4]{AmishHutterite_noCellPvalues.jpeg}\\
+\indent The stark difference between these results is because of the correlation between whole-blood cell composition and group status. The table below gives the standardized regression coefficients after regressing cell type $\bm{C}$ onto Amish vs. Hutterite group status $\bm{X}$:\\
+\\
+\begin{tabular}{ |p{1.5cm}||p{3cm}| }
+\hline
+Cell Type & Amish $-$ Hutterite Standardized Effect\\
+\hline
+T cell & $-0.62$\\\hline
+B cell & $0.65$\\\hline
+Eosinophil & $-0.40$\\\hline
+Neutrophil & $1.41$\\\hline
+Monocyte & $0.65$\\\hline
+\end{tabular}\\
+
+Since cell heterogeneity and group status are so correlated, there is little variability left in $\bm{X}$ to estimate $\bm{B}$ after we correct for cell type (i.e. we are in the scenario when $\bm{\Lambda}^{1/2}$ is small), which in turn cause our test statistics to move closer to 0. We also estimated $\tilde{\bm{L}}$ and found that $\left( \frac{\abs{\frac{1}{p}\hat{\tilde{\bm{L}}}^T \hat{\bm{\Sigma}}^{-1}\hat{\tilde{\bm{L}}}}}{\abs{\frac{1}{59} I_5}} \right)^{1/5} \approx 1.3$. This implies that if $\tilde{\bm{L}}$ is non-zero and cellular heterogeneity were not observed, the observed CpG methylation data would not be informative enough to estimate cell type and we would perform considerable anti-conservative inference. However, just because $\abs{\frac{1}{p}\hat{\tilde{\bm{L}}}^T \hat{\bm{\Sigma}}^{-1}\hat{\tilde{\bm{L}}}}$ is slightly larger than $\abs{\frac{1}{59} I_5}$ does not mean the inference we do without measured cell type is anti-convervative. In fact, if $\tilde{\bm{L}} = \bm{0}$, we would expect $\frac{1}{p}\hat{\tilde{\bm{L}}}^T \hat{\bm{\Sigma}}^{-1}\hat{\tilde{\bm{L}}} \approx \frac{1}{59} I_5$. Therefore, we cannot say with 100\% confidence that the results without cell type measurements are anti-conservative. We can only use our prior understanding of methylation patterns across different cell types and assume that $\tilde{\bm{L}} \neq \bm{0}$. If this were in fact the case, our sample size is not large enough to perform accurate inference without having observed cell composition.
+
+\section{Simulation Study}
+\indent Incorrectly estimating the correlation between cell type heterogeneity and the covariate(s) of interest can have deleterious effects on any procedure that attempts to control for false discovery. To explore this, we simulated data according to \textbf{equ. 5} with parameters based on estimates in the Amish-Hutterite study (see below table). We partitioned $n = 100$ individuals into two groups, 50 of them Amish and 50 of them Hutterites. In all of our simulations, methylation differed in only one cell type, i.e. $K=1$.\\
+\\
+\begin{tabular}{|p{2.0cm}||p{3.1cm}|p{2.8cm}|p{2.0cm}|p{3.5cm}|}
+\hline
+Simulation ID & Amish-Hutterite Stand. Effect, $B$ & Cell Type Stand. Effect, $L$ & $\mathcal{I}_{\text{condounding}} = \frac{1}{p}L^T \Sigma^{-1}L$ & Observed Correlation btwn. $\bm{X}$ and $\bm{C}$, $\tilde{\bm{\Omega}}^{\text{OLS}}$\\\hline
+(a) & $0.95\delta_0 + 0.05N\left( 0,0.4 \right)$ & $0.7\delta_0 + 0.3N\left( 0, \tau_1 \right)$ & $\frac{1.3}{n}I_1$ & 1.41\\\hline
+(b) & $0.95\delta_0 + 0.05N\left( 0,0.4 \right)$ & $0.7\delta_0 + 0.3N\left( 0, \tau_3 \right)$ & $\frac{1.3 \times 10}{n}I_1$ & 1.41 \\\hline
+(c) & $0.95\delta_0 + 0.05N\left( 0,0.4 \right)$ & $0.7\delta_0 + 0.3N\left( 0, \tau_2 \right)$ & $\frac{1.3}{10n}I_1$ & 1.41 \\\hline
+(d) & $0.95\delta_0 + 0.05N\left( 0,0.4 \right)$ & $0.7\delta_0 + 0.3N\left( 0, \tau_4 \right)$ & $\frac{1.3}{n}I_1$ & $1.41/3$\\\hline
+
+\end{tabular}\\
+The above table gives the parameters for the four different simulations, where the variances $\tau_i$ were chosen to get the correct $\mathcal{I}_{\text{confounding}}$. The below figures plot Storey's q-value against the true false discovery proportion
+\begin{equation}
+FDP(q) = \frac{\#\left\lbrace \text{False positives with q-values $\leq q$} \right\rbrace}{\#\left\lbrace \text{CpG sites with q-values $\leq q$} \right\rbrace}
+\end{equation}
+\\
+\includegraphics[scale=0.25]{Fdp_1p3_pi00p7.jpeg}(a)
+\includegraphics[scale=0.25]{Fdp_13p0.jpeg}(b)\\
+\includegraphics[scale=0.25]{Fdp_0p13.jpeg}(c)
+\includegraphics[scale=0.25]{Fdp_1p3p0_0p33xcorr.jpeg}(d)\\
+\\
+It is not hard to see that when the correlation $\tilde{\bm{\Omega}}^{\text{OLS}}$ is large and we have little power to estimate it (plot (a)), we incur significantly more false positives than we would expect using a reasonable false discovery control procedure. The reason for this is two fold. First, when we underestimate $\tilde{\bm{\Omega}}^{\text{OLS}}$ our estimator for $\hat{B}$ is significantly biased and second, we will underestimate the variance of the components of $\hat{B}$ (see \textbf{equ. 9}). However, is we have enough statistical power to accurately estimate $\tilde{\bm{\Omega}}^{\text{OLS}}$ (plot (b)), our false discovery control procedure is accurate. We also note that if the cell type effect is very small in comparison to the effect of interest (simulation (c)), we significantly underestimate $\tilde{\bm{\Omega}}^{\text{OLS}}$ but still can accurately control false discovery. This is because the effect $\tilde{\bm{L}}\tilde{\bm{\Omega}}^{\text{OLS}} \bm{X}$ is much smaller in comparison to $\bm{B}\bm{X}$, so we tend to find true non-zero Amish-Hutterite effects before Amish-Hutterite effects that are just due to differences in cell composition. Similar reasoning explains why we can control for false discovery when $\tilde{\bm{\Omega}}^{\text{OLS}}$ is small (as in simulation (d)). Even though we underestimate $\tilde{\bm{\Omega}}^{\text{OLS}}$, $\tilde{\bm{\Omega}}^{\text{OLS}} - \hat{\tilde{\bm{\Omega}}}$ is innocuously small.
+
+\section{Partially Observed Cell Type}
+
+
+
+\section{What I need to add}
+\begin{itemize}
+\item A section simulating data with the same correlation $\tilde{\bm{\Omega}}$ as given in the read data to illustrate the effect on false discovery. A good plot might be to fix a few q-values and plot the FDP when cell type is unobserved.
+\item My model with partially observed cell type. I only have simulation results here. I should include a brief discussion about the caveats with real data, since additional batch effects may be difficult to estimate.
+\item 
+\end{itemize}
+
+
+ 
+
+\section{Junk}
+$\bm{X}^T = \left[ \begin{matrix}
+\bm{Q}_1 & \bm{Q}_2
+\end{matrix} \right]\left[ \begin{matrix}
+\bm{R}_{d \times d}\\
+\bm{0}_{n-d \times d}
+\end{matrix} \right]$ be the QR decomposition of $\bm{X}^T$. $\bm{W}_{r \times n} \sim MN_{r \times n}\left( \bm{\alpha}_{r \times d}\bm{X}_{d \times n}, I_{r}, I_{n} \right)$ be a random effects matrix that represents additional confounding in the experiment that may be correlated with the covariates of interest. In most data sets, $\bm{\alpha}$ is small or 0, i.e. the correlation between the confounders and the covariates of interest is small. For simplicity, we assume $\bm{\alpha}=0$, although the model and methods can be easily extended for $\bm{\alpha} \neq 0$. $\bm{\tilde{\Gamma}} = \left[ \begin{matrix}
+\bm{\Gamma} & \bm{L} \bm{\Lambda}^{1/2}
+\end{matrix} \right]$, $\bm{\tilde{W}} = \left[ \begin{matrix}
+\bm{W}\\
+\bm{\Lambda}^{-1/2}\bm{\Xi}
+\end{matrix} \right]$ and $\bm{\tilde{\Omega}} = \left[ \begin{matrix}
+\bm{0}_{r \times d}\\
+\bm{\Lambda}^{-1/2} \Omega
+\end{matrix} \right]$. Note that $\bm{\tilde{W}} \sim MN_{\left( r+K \right)\times n}\left( \bm{0}, I_{r+K}, I_n \right)$.
 
 \end{document}

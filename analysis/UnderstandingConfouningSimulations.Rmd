@@ -410,7 +410,7 @@ beta.cell <- M %*% cov.mat.cell %*% solve(t(cov.mat.cell)%*%cov.mat.cell)
 dof.cell <- n - ncol(cov.mat.cell)
 Sigma.cell <- rowSums((M %*% (diag(n) - cov.mat.cell%*%solve(t(cov.mat.cell)%*%cov.mat.cell)%*%t(cov.mat.cell))) * M) / dof.cell
 z.cell <- beta.cell[,2] / sqrt(Sigma.cell) / sqrt(solve(t(cov.mat.cell) %*% cov.mat.cell)[2,2])
-p.values.cell.group <- 2 - 2*pt(abs(z.cell)), df=dof.cell)
+p.values.cell.group <- 2 - 2*pt(abs(z.cell), df=dof.cell)
 q.cell <- qvalue(p.values.cell.group)
 pi.cell.group <- q.cell$pi0
 
@@ -418,10 +418,11 @@ L.m <- (M %*% cov.mat.cell %*% solve(t(cov.mat.cell)%*%cov.mat.cell))[,3:7]
 Lambda.m <- 1/(n - 2) * C.all[1:5,] %*% (diag(n) - cov.mat.cell[,1:2] %*% solve(t(cov.mat.cell[,1:2]) %*% cov.mat.cell[,1:2], t(cov.mat.cell[,1:2]))) %*% t(C.all[1:5,])
 D.m <- t(chol(Lambda.m))
 L.m.stand <- L.m %*% D.m
+Omega.avh <- C.all[1:5,] %*% cov.mat.cell[,1:2] %*% solve(t(cov.mat.cell[,1:2]) %*% cov.mat.cell[,1:2])
 Omega.m.stand <- solve(D.m, C.all[1:5,] %*% cov.mat.cell[,1:2] %*% solve(t(cov.mat.cell[,1:2]) %*% cov.mat.cell[,1:2]))
 inf.cell <- n * diag(1/p * t(L.m.stand / Sigma.cell) %*% L.m.stand)   #The ratio of 1/pL'Sigma^{-1}L : 1/n is about 1
 
-X.tmp <- (diag(n) - t(C.all[1:5,]) %*% solve(C.all[1:5,] %*% t(C.all[1:5,]), C.all[1:5,])) %*% cov.mat.nocell[,1:2]
+X.tmp <- (diag(n) - t(C.all[1:5,]) %*% solve(C.all[1:5,] %*% t(C.all[1:5,]), C.all[1:5,])) %*% cov.mat.cell[,1:2]
 conf.sd.above <- sqrt(t(cate.Cell.m$alpha) %*% cate.Cell.m$alpha) / sqrt(solve(t(X.tmp)%*%X.tmp)[2,2])   #The estimated confounded is about 1.4 sd's times what we would expect by chance, indicating the confounding we do observe is probably just due to chance.
 ```
 Note that $\frac{1}{p}L^T \Sigma^{-1}L = O\left( \frac{1}{n} \right)$, meaning we are going to have a very difficult time estimating the correlation between cell type and $X$ from the methylation data $M$. This is aggravated by the fact that the standardized correlation is about 2 for Neutrophils, which seem to be very correlated with $M$ (see p-value histogram for neutrophils). We can conclude that we need cell type data in this example to get a better estimate of $\Omega$.
@@ -439,6 +440,16 @@ q.nocell <- qvalue(p.values.nocell.group)
 pi.nocell.group <- q.nocell$pi0
 ```
 Without cell type information, we estimate $\pi_0$ to be 0.80. With cell type, we estimate it to be $0.95$. The anti-convervative behavior is exactly what I observed in simulations.
+
+```{r PlotDifferences}
+h.nocell <- hist(p.values.nocell.group, plot=T, main="Differences in P-values With and Without Cell Type", xlab="P-values for Amish vs. Hutterite", ylab="Number of Sites")
+h.cell <- hist(p.values.cell.group, plot=F)
+
+for (i in 1:length(h.cell$mids)) {
+  lines(rep(h.cell$mids[i], 100), seq(0,h.cell$counts[i],length=100), col="red", lwd=2)
+}
+legend("topright", legend=c("With Cell", "Without Cell"), fill=c("red", "black"))
+```
 
 ```{r Houseman_noCell}
 beta.star <- M %*% cov.mat.nocell[,1:2] %*% solve(t(cov.mat.nocell[,1:2])%*%cov.mat.nocell[,1:2])
@@ -467,7 +478,7 @@ n.repeat <- 100
 Sigma.und <- rep(0.15, p.und)
 norm.true.all <- rep(NA, n.repeat)
 norm.est.all <- rep(NA, n.repeat)
-Gamma.und <- matrix(rnorm(r.und*p.und), nrow=p.und, ncol=r.und) * sqrt(1/n.und)
+Gamma.und <- matrix(rnorm(r.und*p.und), nrow=p.und, ncol=r.und) * sqrt(1/n.und) * sqrt(0.15)
 V.und <- svd(t(Gamma.und / Sigma.und) %*% Gamma.und)$v
 Gamma.und <- Gamma.und %*% V.und
 for (i in 1:n.repeat) {
@@ -482,6 +493,87 @@ plot(norm.true.all, norm.est.all); abline(a=0, b=1, col="red")
 plot(norm.true.all - norm.est.all); abline(h=0, col="red")
 summary(lm(norm.est.all~norm.true.all))
 ```
+
+Below I will run simulations for various sizes of $\Gamma$ to see when we start underestimating $\Omega$.
+```{r UnderestimateOmega_all}
+p.und <- floor(327273 / 10)
+r.und <- 3
+n.und <- 100
+n.repeat <- 50
+mult.vec <- c(0.1, 1, 2, 5, 10, 20, 50, 100, 1000, 1e4)
+norm.true.mat <- matrix(NA, nrow=n.repeat, ncol=length(mult.vec))     #Simulation results x Simulation Type
+norm.est.mat <- matrix(NA, nrow=n.repeat, ncol=length(mult.vec))
+lm.vec <- rep(NA, length(mult.vec))
+
+Sigma.und <- rep(0.15, p.und)
+for (i in 1:length(mult.vec)) {
+  Gamma.und <- matrix(rnorm(r.und*p.und), nrow=p.und, ncol=r.und) * sqrt(mult.vec[i]/n.und) * sqrt(0.15)
+  V.und <- svd(t(Gamma.und / Sigma.und) %*% Gamma.und)$v
+  Gamma.und <- Gamma.und %*% V.und
+  for (j in 1:n.repeat) {
+    X.und <- cbind(rep(1,n.und), rbinom(n=n.und, size=1, prob=0.5))
+    alpha.und <- matrix(0, nrow=r.und, ncol=1)
+    out.est <- CompareEstimate(X.und, alpha.und, Gamma.und, Sigma.und)
+    norm.true.mat[j,i] <- t(out.est$alpha.true) %*% out.est$alpha.true
+    norm.est.mat[j,i] <- t(out.est$alpha.hat) %*% out.est$alpha.hat
+  }
+  lm.vec[i] <- summary(lm(norm.est.mat[,i]~norm.true.mat[,i]))$coefficients[2,1]
+}
+
+##Plot results##
+jpeg(filename = "UnderestimatingOmega_Multipliers.jpeg", width=1056, height=629)
+par(mfrow=c(3,3), mex=0.85, cex=0.8)
+for (i in 1:(length(mult.vec)-1)) {
+  x.i <- norm.true.mat[,i]
+  y.i <- norm.est.mat[,i]
+  slope.i <- as.character(round(100*lm.vec[i])/100)
+  mult.i <- as.character(mult.vec[i])
+  plot(x.i, y.i, xlab="True Norm(Omega)^2", ylab="Estimated Norm(Omega)^2", main=paste0("Multiplier = ", mult.i, ", Slope = ", slope.i))
+  abline(a=0, b=1, col="red")
+}
+dev.off()
+```
+
+## FDR plots for paper
+
+This section assume that the multiplier for the information matrix is 1.3 and the correlation is 1.41
+```{r FDRplot_neutro1}
+p.neutro <- floor(nrow(M.orig) / 10)
+n.neutro <- 100
+mult.neutro <- 1.3
+pi0.L.neutro <- 0.7
+corr.neutro <- Omega.avh[4,2] / sqrt(Lambda.m[4,4])
+pi0.B.neutro <- 0.95; stand.B.neutro <- 0.4
+n.rep <- 50
+
+#Sigma and L#
+
+Sigma.neutro <- rep(0.15, p.neutro)
+L.neutro <- matrix(rbinom(p.neutro*1, size=1, prob=1-pi0.L.neutro), nrow=p.neutro, ncol=1) * matrix(rnorm(p.neutro*1), nrow=p.neutro, ncol=1) * sqrt(Sigma.neutro) * sqrt(mult.neutro / n.neutro) * sqrt(1 / (1-pi0.L.neutro))
+
+#B, X#
+
+B.neutro <- cbind(rep(0,p.neutro), rbinom(p.neutro*1, size=1, prob=1-pi0.B.neutro) * rnorm(p.neutro*1) * sqrt(0.15 * stand.B.neutro))
+X.neutro <- rbind(rep(1, n.neutro), c(rep(1, n.neutro/2), rep(0, n.neutro/2)))
+orthog.neutro <- diag(n.neutro) - t(X.neutro) %*% solve(X.neutro %*% t(X.neutro), X.neutro)
+
+#Simulate and analyze data#
+
+q.values.int <- seq(0.05, 0.30, by=0.05)
+fdp.neutro.cell <- matrix(NA, nrow=n.rep, ncol=length(q.values.int))
+fdp.neutro.nocell <- matrix(NA, nrow=n.rep, ncol=length(q.values.int))
+alpha.under.neutro <- rep(NA, n.rep)
+for (i in 1:n.rep) {
+  C.neutro <- corr.neutro * rbind(X.neutro[2,]) + matrix(rnorm(n.neutro*1), nrow=1, ncol=n.neutro) %*% orthog.neutro
+  Sim.neutro <- Sim.Analyze.Fdr(X.neutro, C.neutro, B.neutro, L.neutro, Sigma.neutro)
+  alpha.under.neutro[i] <- t(Sim.neutro$alpha.cate) %*% t(Sim.neutro$alpha.cate) / corr.neutro^2
+  for (j in 1:length(q.values.int)) {
+    fdp.neutro.cell[i,j] <- Sim.neutro$fdp.cell[which.min(abs(sort(Sim.neutro$q.cell$qvalues) - q.values.int[j]))]
+    fdp.neutro.nocell[i,j] <- Sim.neutro$fdp.nocell[which.min(abs(sort(Sim.neutro$q.nocell$qvalues) - q.values.int[j]))]
+  }
+}
+```
+
 
 ## Session information
 

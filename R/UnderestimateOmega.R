@@ -21,10 +21,49 @@ CompareEstimate <- function(X, alpha, Gamma, Sigma) {     #It is assumed X is n 
 	Gamma.hat <- out.em$Gamma
 	Sigma.hat <- out.em$Sigma
 	Info <- t(Gamma.hat / Sigma.hat) %*% Gamma.hat / p
-	Rest <- t(t((Gamma) / Sigma.hat) %*% Gamma.hat / p)
+	Rest <- t(t((Gamma) / Sigma.hat) %*% Gamma.hat / p)    #We are interested in the eigenvalues of Rest'Info^{-2}Rest and if they are all strictly less than 1, which assures alpha is UNDERESTIMATED
+	Inter <- t( (Gamma.hat - Gamma) / Sigma.hat ) %*% Gamma.hat / p
 	rm(out.em)
 	
 	alpha.hat <- solve(t(Gamma.hat / Sigma.hat) %*% Gamma.hat, t(Gamma.hat / Sigma.hat) %*% Y %*% Q1 %*% solve(t(R)))[,2:d]
 	alpha.true <- alpha + (W1 %*% solve(t(R)))[,2:d]
-	return(list(alpha.true=alpha.true, alpha.hat=alpha.hat, resid=solve(t(Gamma.hat / Sigma.hat) %*% Gamma.hat, t(Gamma.hat / Sigma.hat) %*% E1 %*% solve(t(R)))[,2:d], Info=Info, Rest=Rest))
+	return(list(alpha.true=alpha.true, alpha.hat=alpha.hat, resid=solve(t(Gamma.hat / Sigma.hat) %*% Gamma.hat, t(Gamma.hat / Sigma.hat) %*% E1 %*% solve(t(R)))[,2:d], Info=Info, Rest=Rest, Inter=Inter, Sigma.hat=Sigma.hat))
+}
+
+
+###This code will simulate data and analyze it using cate (without cell type info). The results will be used in the Fdr figure###
+
+Sim.Analyze.Fdr <- function(X, C, B, L, Sigma) {   #It is assumed that d = 2 and the first row of X is the intercept
+	p <- nrow(L)
+	n <- ncol(X)
+	r.sim <- ncol(L)
+	Y <- B %*% X + L %*% C + matrix(rnorm(n*p), nrow=p, ncol=n) * sqrt(Sigma)
+	
+	data.X <- t(X)
+	colnames(data.X) <- c("Intercept", "Cov1")
+	data.X <- data.frame(data.X)
+	
+	cate.sim <- cate(~Cov1, X.data=data.X, Y=t(Y), r=r.sim, fa.method="ml", adj.method="rr", calibrate=F)
+	Z.cate <- cate.sim$Z
+	X.tot <- cbind(t(X), Z.cate)
+	orthog.X.tot <- diag(n) - X.tot %*% solve(t(X.tot) %*% X.tot, t(X.tot))
+	dof <- n - ncol(X.tot)
+	B.hat <- (Y %*% X.tot %*% solve(t(X.tot) %*% X.tot))[,2]
+	Sigma.hat <- rowSums((Y %*% orthog.X.tot) * Y) / dof
+	var.cov1 <- Sigma.hat * solve(t(X.tot) %*% X.tot)[2,2]
+	z.cov1 <- B.hat / sqrt(var.cov1)
+	p.cov1 <- 2 - 2 * pt(abs(z.cov1), df=dof)
+	q.cov1 <- qvalue(p.cov1)
+	fdp.sim <- false.sign.results(B[,2], B.hat, q.cov1$qvalue)$fdr
+	
+	all.data <- cbind(t(X), t(C))
+	B.hat.cell <- (Y %*% all.data %*% solve(t(all.data) %*% all.data))[,2]
+	orthog.all.data <- diag(n) - all.data %*% solve(t(all.data) %*% all.data, t(all.data))
+	Sigma.hat.cell <- rowSums((Y %*% orthog.all.data) * Y) / dof
+	var.cov1.cell <- Sigma.hat.cell * solve(t(all.data) %*% all.data)[2,2]
+	p.cov1.cell <- 2 - 2 * pt(abs(B.hat.cell / sqrt(var.cov1.cell)), df=dof)
+	q.cov1.cell <- qvalue(p.cov1.cell)
+	fdp.sim.cell <- false.sign.results(B[,2], B.hat.cell, q.cov1.cell$qvalue)$fdr
+	
+	return(list(fdp.nocell=fdp.sim, q.nocell=q.cov1, alpha.cate=cate.sim$alpha, fdp.cell=fdp.sim.cell, q.cell=q.cov1.cell))
 }
