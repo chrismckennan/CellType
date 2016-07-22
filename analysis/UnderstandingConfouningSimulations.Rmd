@@ -572,6 +572,54 @@ for (i in 1:n.rep) {
     fdp.neutro.nocell[i,j] <- Sim.neutro$fdp.nocell[which.min(abs(sort(Sim.neutro$q.nocell$qvalues) - q.values.int[j]))]
   }
 }
+
+#Get summary statistics of results#
+FDR.neutro.cell <- apply(fdp.neutro.cell, 2, mean)
+sd.fdp.neutro.cell <- apply(fdp.neutro.cell, 2, sd)
+
+FDR.neutro.nocell <- apply(fdp.neutro.nocell, 2, mean)
+sd.fdp.neutro.nocell <- apply(fdp.neutro.nocell, 2, sd)
+
+mean.und.neutro <- mean(alpha.under.neutro)
+sd.und.neutro <- sd(alpha.under.neutro)
+
+###Plot summary level data###
+n.stand.plot <- 2
+text.diff <- 0.01
+line.wid.sd <- 0.005
+text.size <- 0.6
+
+#With cell (blue)#
+plot(rep(q.values.int[1], 50), seq(FDR.neutro.cell[1] - n.stand.plot*sd.fdp.neutro.cell[1], FDR.neutro.cell[1] + n.stand.plot*sd.fdp.neutro.cell[1], length=50), type="l", col="blue", xlab="q-value cutoff", ylab="False Discovery Proportion (FDP)", main="FDP Plot for Simulation (a)", xlim=c(0,max(q.values.int)), ylim=c(0, 0.55))
+lines(seq(q.values.int[1] - line.wid.sd, q.values.int[1] + line.wid.sd, length=50), rep(FDR.neutro.cell[1] - n.stand.plot*sd.fdp.neutro.cell[1], 50), col="blue")
+lines(seq(q.values.int[1] - line.wid.sd, q.values.int[1] + line.wid.sd, length=50), rep(FDR.neutro.cell[1] + n.stand.plot*sd.fdp.neutro.cell[1], 50), col="blue")
+points(q.values.int[1], FDR.neutro.cell[1], pch="x", col="blue")
+
+#Without cell (red)#
+lines(rep(q.values.int[1], 50), seq(FDR.neutro.nocell[1] - n.stand.plot*sd.fdp.neutro.nocell[1], FDR.neutro.nocell[1] + n.stand.plot*sd.fdp.neutro.nocell[1], length=50), col="red")
+lines(seq(q.values.int[1] - line.wid.sd, q.values.int[1] + line.wid.sd, length=50), rep(FDR.neutro.nocell[1] - n.stand.plot*sd.fdp.neutro.nocell[1], 50), col="red")
+lines(seq(q.values.int[1] - line.wid.sd, q.values.int[1] + line.wid.sd, length=50), rep(FDR.neutro.nocell[1] + n.stand.plot*sd.fdp.neutro.nocell[1], 50), col="red")
+points(q.values.int[1], FDR.neutro.nocell[1], pch="x", col="red")
+text(x=q.values.int[1] - text.diff, y=FDR.neutro.nocell[1], paste0("(", as.character(round(q.values.int[1], digits=2)), ", ", as.character(round(FDR.neutro.nocell[1], digits=2)), ")"), col="red", cex=text.size)
+
+#Plot the rest#
+for (j in 2:length(q.values.int)) {
+  #Without cell (red)#
+	lines(rep(q.values.int[j], 50), seq(FDR.neutro.nocell[j] - n.stand.plot*sd.fdp.neutro.nocell[j], FDR.neutro.nocell[j] + n.stand.plot*sd.fdp.neutro.nocell[j], length=50), col="red")
+	lines(seq(q.values.int[j] - line.wid.sd, q.values.int[j] + line.wid.sd, length=50), rep(FDR.neutro.nocell[j] - n.stand.plot*sd.fdp.neutro.nocell[j], 50), col="red")
+	lines(seq(q.values.int[j] - line.wid.sd, q.values.int[j] + line.wid.sd, length=50), rep(FDR.neutro.nocell[j] + n.stand.plot*sd.fdp.neutro.nocell[j], 50), col="red")
+	points(q.values.int[j], FDR.neutro.nocell[j], pch="x", col="red")
+	text(x=q.values.int[j] - text.diff, y=FDR.neutro.nocell[j], paste0("(", as.character(round(q.values.int[j], digits=2)), ", ", as.character(round(FDR.neutro.nocell[j], digits=2)), ")"), col="red", cex=text.size)
+	
+	#With cell (blue)#
+	lines(rep(q.values.int[j], 50), seq(FDR.neutro.cell[j] - n.stand.plot*sd.fdp.neutro.cell[j], FDR.neutro.cell[j] + n.stand.plot*sd.fdp.neutro.cell[j], length=50), col="blue")
+	lines(seq(q.values.int[j] - line.wid.sd, q.values.int[j] + line.wid.sd, length=50), rep(FDR.neutro.cell[j] - n.stand.plot*sd.fdp.neutro.cell[j], 50), col="blue")
+	lines(seq(q.values.int[j] - line.wid.sd, q.values.int[j] + line.wid.sd, length=50), rep(FDR.neutro.cell[j] + n.stand.plot*sd.fdp.neutro.cell[j], 50), col="blue")
+	points(q.values.int[j], FDR.neutro.cell[j], pch="x", col="blue")
+}
+
+abline(a=0, b=1)
+legend("bottomright", legend=c("Without cell type", "With cell type"), fill=c("red", "blue"))
 ```
 
 
