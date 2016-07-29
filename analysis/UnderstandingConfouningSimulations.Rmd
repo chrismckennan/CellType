@@ -494,8 +494,8 @@ plot(norm.true.all - norm.est.all); abline(h=0, col="red")
 summary(lm(norm.est.all~norm.true.all))
 ```
 
-Below I will run simulations for various sizes of $\Gamma$ to see when we start underestimating $\Omega$.
-```{r UnderestimateOmega_all}
+Below I will run simulations for various sizes of $\Gamma$ to see when we start underestimating $\Omega$. These simulations assume that everything is nomally distributed.
+```{r UnderestimateOmega_all_Normal}
 p.und <- floor(327273 / 10)
 r.und <- 3
 n.und <- 100
@@ -533,6 +533,138 @@ for (i in 1:(length(mult.vec)-1)) {
 }
 dev.off()
 ```
+
+Here we test to see if we underestimate $\Omega$ when we can estimate some of the confounders.
+```{r UnderestimateOmega_all_Normal_Theorem}
+p.und <- floor(327273 / 10)
+r.und <- 3
+n.und <- 100
+n.repeat <- 50
+mult.mat <- cbind( c(0.1, 0.1, 0.1), c(1,1,1), c(1,2,2), c(1,2,5), c(1,2,1000) )
+norm.true.mat <- matrix(NA, nrow=n.repeat, ncol=ncol(mult.mat))     #Simulation results x Simulation Type
+norm.est.mat <- matrix(NA, nrow=n.repeat, ncol=ncol(mult.mat))
+norm.predict.mat <- matrix(NA, nrow=n.repeat, ncol=ncol(mult.mat))
+lm.vec <- rep(NA, length(mult.vec))
+
+Sigma.und <- rep(0.15, p.und)
+for (i in 1:ncol(mult.mat)) {
+  mult.vec.i <- mult.mat[,i]
+  Gamma.und <- sweep(matrix(rnorm(r.und*p.und), nrow=p.und, ncol=r.und) * sqrt(0.15), MARGIN=2, sqrt(mult.vec.i/n.und), '*')
+  V.und <- svd(t(Gamma.und / Sigma.und) %*% Gamma.und)$v
+  Gamma.und <- Gamma.und %*% V.und
+  for (j in 1:n.repeat) {
+    X.und <- cbind(rep(1,n.und), rbinom(n=n.und, size=1, prob=0.5))
+    alpha.und <- matrix(max(rnorm(1)*0.05 + 0.2, 0.1), nrow=r.und, ncol=1)
+    out.est <- CompareEstimate(X.und, alpha.und, Gamma.und, Sigma.und)
+    norm.true.mat[j,i] <- t(out.est$alpha.true) %*% out.est$alpha.true
+    norm.est.mat[j,i] <- t(out.est$alpha.hat) %*% out.est$alpha.hat
+    norm.predict.mat[j,i] <- sum(out.est$alpha.true^2 * (mult.vec.i[order(-mult.vec.i)]/(mult.vec.i[order(-mult.vec.i)]+1))^2)   #This is what I predict the norm to be based on theory
+  }
+  lm.vec[i] <- summary(lm(norm.est.mat[,i]~norm.true.mat[,i]))$coefficients[2,1]
+}
+
+##Plot results##
+jpeg(filename = "UnderestimatingOmega_Multipliers_Theorem.jpeg", width=1056, height=629)
+par(mfrow=c(3,2), mex=0.85, cex=0.8)
+for (i in 1:ncol(mult.mat)) {
+  x.i <- norm.est.mat[,i]
+  y.i <- norm.predict.mat[,i]
+  slope.i <- as.character(round(100*lm.vec[i])/100)
+  mult.i <- paste(as.character(mult.mat[,i]), collapse = ", ")
+  plot(x.i, y.i, xlab="Estimated Norm(Omega)^2", ylab="Thm 1 Predicted Norm(Omega)^2", main=paste0("Lambda's = ", mult.i))
+  abline(a=0, b=1, col="red")
+}
+dev.off()
+```
+
+
+The below simulates data according to a T-distribution. Below, I will assume that the confounders are normally distributed and the residuals are T-distribution with 5 degrees of freedom. This is so the residuals have finite excess kurtosis.
+```{r UnderestimateOmega_all_ET4p1}
+df.t.residual <- 3.0
+p.und <- floor(327273 / 10)
+r.und <- 3
+n.und <- 1000
+n.repeat <- 50
+mult.vec <- c(0.1, 1, 2, 5, 10, 20, 50, 100, 1000, 1e4)
+norm.true.mat <- matrix(NA, nrow=n.repeat, ncol=length(mult.vec))     #Simulation results x Simulation Type
+norm.est.mat <- matrix(NA, nrow=n.repeat, ncol=length(mult.vec))
+lm.vec <- rep(NA, length(mult.vec))
+
+Sigma.und <- rep(0.15, p.und)
+for (i in 1:length(mult.vec)) {
+  Gamma.und <- matrix(rnorm(r.und*p.und), nrow=p.und, ncol=r.und) * sqrt(mult.vec[i]/n.und) * sqrt(0.15)
+  V.und <- svd(t(Gamma.und / Sigma.und) %*% Gamma.und)$v
+  Gamma.und <- Gamma.und %*% V.und
+  for (j in 1:n.repeat) {
+    X.und <- cbind(rep(1,n.und), rbinom(n=n.und, size=1, prob=0.5))
+    E.ij <- matrix(rt(n.und*p.und, df=df.t.residual), nrow=p.und, ncol=n.und) * sqrt((df.t.residual-2)/df.t.residual) * sqrt(0.15)
+    alpha.und <- matrix(max(rnorm(1)*0.05 + 0.2, 0.05), nrow=r.und, ncol=1)
+    out.est <- CompareEstimate2(X.und, alpha.und, E.ij, Gamma.und, Sigma.und)
+    norm.true.mat[j,i] <- t(out.est$alpha.true) %*% out.est$alpha.true
+    norm.est.mat[j,i] <- t(out.est$alpha.hat) %*% out.est$alpha.hat
+  }
+  lm.vec[i] <- summary(lm(norm.est.mat[,i]~norm.true.mat[,i]))$coefficients[2,1]
+}
+rm(E.ij)
+##Plot results##
+jpeg(filename = "UnderestimatingOmega_Multipliers_ET5.jpeg", width=1056, height=629)
+par(mfrow=c(3,3), mex=0.85, cex=0.8)
+for (i in 1:(length(mult.vec)-1)) {
+  x.i <- norm.true.mat[,i]
+  y.i <- norm.est.mat[,i]
+  slope.i <- as.character(round(100*lm.vec[i])/100)
+  mult.i <- as.character(mult.vec[i])
+  plot(x.i, y.i, xlab="True Norm(Omega)^2", ylab="Estimated Norm(Omega)^2", main=paste0("Multiplier = ", mult.i, ", Slope = ", slope.i))
+  abline(a=0, b=1, col="red")
+}
+dev.off()
+```
+
+
+The below simulates data according to a T-distribution. Below, I will assume that the confounders are normally distributed and the residuals are T-distribution with 2.1 degrees of freedom. This is so the residuals have infinite excess kurtosis.
+```{r UnderestimateOmega_all_ET2p1}
+df.t.residual <- 2.1
+p.und <- floor(327273 / 10)
+r.und <- 3
+n.und <- 100
+n.repeat <- 50
+mult.vec <- c(0.1, 1, 2, 5, 10, 20, 50, 100, 1000, 1e4)
+norm.true.mat <- matrix(NA, nrow=n.repeat, ncol=length(mult.vec))     #Simulation results x Simulation Type
+norm.est.mat <- matrix(NA, nrow=n.repeat, ncol=length(mult.vec))
+lm.vec <- rep(NA, length(mult.vec))
+
+Sigma.und <- rep(0.15, p.und)
+for (i in 1:length(mult.vec)) {
+  Gamma.und <- matrix(rnorm(r.und*p.und), nrow=p.und, ncol=r.und) * sqrt(mult.vec[i]/n.und) * sqrt(0.15)
+  V.und <- svd(t(Gamma.und / Sigma.und) %*% Gamma.und)$v
+  Gamma.und <- Gamma.und %*% V.und
+  for (j in 1:n.repeat) {
+    X.und <- cbind(rep(1,n.und), rbinom(n=n.und, size=1, prob=0.5))
+    E.ij <- matrix(rt(n.und*p.und, df=df.t.residual), nrow=p.und, ncol=n.und) * sqrt((df.t.residual-2)/df.t.residual) * sqrt(0.15)
+    alpha.und <- matrix(0, nrow=r.und, ncol=1)
+    out.est <- CompareEstimate2(X.und, alpha.und, E.ij, Gamma.und, Sigma.und)
+    norm.true.mat[j,i] <- t(out.est$alpha.true) %*% out.est$alpha.true
+    norm.est.mat[j,i] <- t(out.est$alpha.hat) %*% out.est$alpha.hat
+  }
+  lm.vec[i] <- summary(lm(norm.est.mat[,i]~norm.true.mat[,i]))$coefficients[2,1]
+}
+rm(E.ij)
+##Plot results##
+jpeg(filename = "UnderestimatingOmega_Multipliers_ET2p1.jpeg", width=1056, height=629)
+par(mfrow=c(3,3), mex=0.85, cex=0.8)
+for (i in 1:(length(mult.vec)-1)) {
+  x.i <- norm.true.mat[,i]
+  y.i <- norm.est.mat[,i]
+  slope.i <- as.character(round(100*lm.vec[i])/100)
+  mult.i <- as.character(mult.vec[i])
+  plot(x.i, y.i, xlab="True Norm(Omega)^2", ylab="Estimated Norm(Omega)^2", main=paste0("Multiplier = ", mult.i, ", Slope = ", slope.i))
+  abline(a=0, b=1, col="red")
+}
+dev.off()
+```
+
+
+
 
 ## FDR plots for paper
 

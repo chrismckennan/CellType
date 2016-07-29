@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015) (preloaded format=pdflatex 2015.5.24)  21 JUL 2016 11:32
+This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015) (preloaded format=pdflatex 2015.5.24)  29 JUL 2016 18:02
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -545,61 +545,63 @@ Package: nicefrac 1998/08/04 v0.9b Nice fractions
 (/usr/local/texlive/2015/texmf-dist/tex/latex/setspace/setspace.sty
 Package: setspace 2011/12/19 v6.7a set line spacing
 )
+\c@theorem=\count147
+
 (./Draft_160624.aux)
 \openout1 = `Draft_160624.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/txmi/m/it on input line 42.
-LaTeX Font Info:    Try loading font information for OML+txmi on input line 42.
+LaTeX Font Info:    Checking defaults for OML/txmi/m/it on input line 44.
+LaTeX Font Info:    Try loading font information for OML+txmi on input line 44.
 
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/omltxmi.fd
 File: omltxmi.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 42.
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 42.
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for OMS/txsy/m/n on input line 42.
-LaTeX Font Info:    Try loading font information for OMS+txsy on input line 42.
+LaTeX Font Info:    ... okay on input line 44.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 44.
+LaTeX Font Info:    ... okay on input line 44.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 44.
+LaTeX Font Info:    ... okay on input line 44.
+LaTeX Font Info:    Checking defaults for OMS/txsy/m/n on input line 44.
+LaTeX Font Info:    Try loading font information for OMS+txsy on input line 44.
 
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/omstxsy.fd
 File: omstxsy.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for OMX/txex/m/n on input line 42.
-LaTeX Font Info:    Try loading font information for OMX+txex on input line 42.
+LaTeX Font Info:    ... okay on input line 44.
+LaTeX Font Info:    Checking defaults for OMX/txex/m/n on input line 44.
+LaTeX Font Info:    Try loading font information for OMX+txex on input line 44.
 
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/omxtxex.fd
 File: omxtxex.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for U/txexa/m/n on input line 42.
-LaTeX Font Info:    Try loading font information for U+txexa on input line 42.
+LaTeX Font Info:    ... okay on input line 44.
+LaTeX Font Info:    Checking defaults for U/txexa/m/n on input line 44.
+LaTeX Font Info:    Try loading font information for U+txexa on input line 44.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxexa.fd
 File: utxexa.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Try loading font information for OT1+txr on input line 42.
+LaTeX Font Info:    ... okay on input line 44.
+LaTeX Font Info:    Try loading font information for OT1+txr on input line 44.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/ot1txr.fd
 File: ot1txr.fd 2000/12/15 v3.1
 )
 (/usr/local/texlive/2015/texmf-dist/tex/context/base/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
-\scratchcounter=\count147
+\scratchcounter=\count148
 \scratchdimen=\dimen187
 \scratchbox=\box50
-\nofMPsegments=\count148
-\nofMParguments=\count149
+\nofMPsegments=\count149
+\nofMParguments=\count150
 \everyMPshowfont=\toks26
-\MPscratchCnt=\count150
+\MPscratchCnt=\count151
 \MPscratchDim=\dimen188
-\MPnumerator=\count151
-\makeMPintoPDFobject=\count152
+\MPnumerator=\count152
+\makeMPintoPDFobject=\count153
 \everyMPtoPDFconversion=\toks27
 ) (/usr/local/texlive/2015/texmf-dist/tex/generic/oberdiek/pdftexcmds.sty
 Package: pdftexcmds 2011/11/29 v0.20 Utility functions of pdfTeX for LuaTeX (HO
@@ -679,39 +681,39 @@ e
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-LaTeX Font Info:    Try loading font information for U+txsya on input line 51.
+LaTeX Font Info:    Try loading font information for U+txsya on input line 53.
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxsya.fd
 File: utxsya.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    Try loading font information for U+txsyb on input line 51.
+LaTeX Font Info:    Try loading font information for U+txsyb on input line 53.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxsyb.fd
 File: utxsyb.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    Try loading font information for U+rsfs on input line 51.
+LaTeX Font Info:    Try loading font information for U+rsfs on input line 53.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/jknapltx/ursfs.fd
 File: ursfs.fd 1998/03/24 rsfs font definition file (jk)
 )
-LaTeX Font Info:    Try loading font information for U+txmia on input line 51.
+LaTeX Font Info:    Try loading font information for U+txmia on input line 53.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxmia.fd
 File: utxmia.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    Try loading font information for U+txsyc on input line 51.
+LaTeX Font Info:    Try loading font information for U+txsyc on input line 53.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxsyc.fd
 File: utxsyc.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    Try loading font information for OMS+txr on input line 67.
+LaTeX Font Info:    Try loading font information for OMS+txr on input line 69.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/omstxr.fd
 File: omstxr.fd 2000/12/15 v3.1
 )
 LaTeX Font Info:    Font shape `OMS/txr/m/n' in size <10> not available
-(Font)              Font shape `OMS/txsy/m/n' tried instead on input line 67.
+(Font)              Font shape `OMS/txsy/m/n' tried instead on input line 69.
 
-Overfull \hbox (1.2091pt too wide) in paragraph at lines 73--78
+Overfull \hbox (1.2091pt too wide) in paragraph at lines 83--88
 \OT1/txr/m/n/10 Let $\OML/cmm/b/it/10 Y[]$ \OT1/txr/m/n/10 be the methy-la-tion
  re-sponse mea-sured on $\OML/txmi/m/it/10 p$ \OT1/txr/m/n/10 CpG sites across 
 $\OML/txmi/m/it/10 n$ \OT1/txr/m/n/10 in-de-pen-dent in-di-vid-u-als, $\OML/cmm
@@ -722,142 +724,156 @@ $\OML/txmi/m/it/10 n$ \OT1/txr/m/n/10 in-de-pen-dent in-di-vid-u-als, $\OML/cmm
 
 {/usr/local/texlive/2015/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
 [2] [3]
-<UnderestimatingOmega_Multipliers.jpeg, id=24, 1059.96pt x 631.35875pt>
+Underfull \hbox (badness 10000) in paragraph at lines 176--179
+
+ []
+
+[4]
+<UnderestimatingOmega_Multipliers_Theorem.jpeg, id=27, 1059.96pt x 631.35875pt>
+File: UnderestimatingOmega_Multipliers_Theorem.jpeg Graphic file (type jpg)
+<use UnderestimatingOmega_Multipliers_Theorem.jpeg>
+Package pdftex.def Info: UnderestimatingOmega_Multipliers_Theorem.jpeg used on 
+input line 211.
+(pdftex.def)             Requested size: 423.97649pt x 252.53902pt.
+
+<UnderestimatingOmega_Multipliers.jpeg, id=28, 1059.96pt x 631.35875pt>
 File: UnderestimatingOmega_Multipliers.jpeg Graphic file (type jpg)
 
 <use UnderestimatingOmega_Multipliers.jpeg>
 Package pdftex.def Info: UnderestimatingOmega_Multipliers.jpeg used on input li
-ne 178.
+ne 218.
 (pdftex.def)             Requested size: 423.97649pt x 252.53902pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 172--182
+Underfull \hbox (badness 10000) in paragraph at lines 214--222
 
  []
 
-[4 <./UnderestimatingOmega_Multipliers.jpeg>] [5]
-<AmishHutterite_CellPvalues.jpeg, id=31, 615.29875pt x 492.84125pt>
+[5 <./UnderestimatingOmega_Multipliers_Theorem.jpeg>] [6 <./UnderestimatingOmeg
+a_Multipliers.jpeg>]
+<AmishHutterite_CellPvalues.jpeg, id=35, 615.29875pt x 492.84125pt>
 File: AmishHutterite_CellPvalues.jpeg Graphic file (type jpg)
 
 <use AmishHutterite_CellPvalues.jpeg>
-Package pdftex.def Info: AmishHutterite_CellPvalues.jpeg used on input line 260
+Package pdftex.def Info: AmishHutterite_CellPvalues.jpeg used on input line 300
 .
 (pdftex.def)             Requested size: 246.11513pt x 197.133pt.
 
-<AmishHutterite_noCellPvalues.jpeg, id=32, 615.29875pt x 492.84125pt>
+<AmishHutterite_noCellPvalues.jpeg, id=36, 615.29875pt x 492.84125pt>
 File: AmishHutterite_noCellPvalues.jpeg Graphic file (type jpg)
 
 <use AmishHutterite_noCellPvalues.jpeg>
-Package pdftex.def Info: AmishHutterite_noCellPvalues.jpeg used on input line 2
-61.
+Package pdftex.def Info: AmishHutterite_noCellPvalues.jpeg used on input line 3
+01.
 (pdftex.def)             Requested size: 246.11513pt x 197.133pt.
 
-Underfull \hbox (badness 6047) in paragraph at lines 266--267
+Underfull \hbox (badness 6047) in paragraph at lines 306--307
 []\OT1/txr/m/n/10 Amish $\OMS/txsy/m/n/10 ^^@$ \OT1/txr/m/n/10 Hut-terite
  []
 
 
-Overfull \hbox (0.66087pt too wide) in paragraph at lines 270--270
+Overfull \hbox (0.66087pt too wide) in paragraph at lines 310--310
 []\OT1/txr/m/n/10 Eosinophil| 
  []
 
 
-Overfull \hbox (0.65088pt too wide) in paragraph at lines 271--271
+Overfull \hbox (0.65088pt too wide) in paragraph at lines 311--311
 []\OT1/txr/m/n/10 Neutrophil| 
  []
 
 
-Overfull \hbox (24.37524pt too wide) in paragraph at lines 258--274
+Overfull \hbox (24.37524pt too wide) in paragraph at lines 298--314
 [] [] 
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 258--274
+Underfull \hbox (badness 10000) in paragraph at lines 298--314
 
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 258--274
+Underfull \hbox (badness 10000) in paragraph at lines 298--314
 
  []
 
-[6 <./AmishHutterite_CellPvalues.jpeg> <./AmishHutterite_noCellPvalues.jpeg>]
-Underfull \hbox (badness 10000) in paragraph at lines 282--282
+[7]
+Underfull \hbox (badness 10000) in paragraph at lines 322--322
 []\OT1/txr/m/n/10 Amish-Hutterite
  []
 
 
-Underfull \hbox (badness 8056) in paragraph at lines 282--282
+Underfull \hbox (badness 8056) in paragraph at lines 322--322
 []\OT1/txr/m/n/10 Cell Type Stand.
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 282--282
+Underfull \hbox (badness 10000) in paragraph at lines 322--322
 []\OT1/txr/m/n/10 Observed Cor-re-la-tion
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 278--290
+Underfull \hbox (badness 10000) in paragraph at lines 318--330
 
  []
 
-<Fdp_1p3_pi00p7.jpeg, id=37, 853.1875pt x 677.53125pt>
+[8 <./AmishHutterite_CellPvalues.jpeg> <./AmishHutterite_noCellPvalues.jpeg>]
+<Fdp_1p3_pi00p7.jpeg, id=45, 853.1875pt x 677.53125pt>
 File: Fdp_1p3_pi00p7.jpeg Graphic file (type jpg)
 
 <use Fdp_1p3_pi00p7.jpeg>
-Package pdftex.def Info: Fdp_1p3_pi00p7.jpeg used on input line 294.
+Package pdftex.def Info: Fdp_1p3_pi00p7.jpeg used on input line 334.
 (pdftex.def)             Requested size: 213.29636pt x 169.38239pt.
- <Fdp_13p0.jpeg, id=38, 853.1875pt x 677.53125pt>
+ <Fdp_13p0.jpeg, id=46, 853.1875pt x 677.53125pt>
 File: Fdp_13p0.jpeg Graphic file (type jpg)
 
 <use Fdp_13p0.jpeg>
-Package pdftex.def Info: Fdp_13p0.jpeg used on input line 295.
+Package pdftex.def Info: Fdp_13p0.jpeg used on input line 335.
 (pdftex.def)             Requested size: 213.29636pt x 169.38239pt.
- <Fdp_0p13.jpeg, id=39, 853.1875pt x 677.53125pt>
+ <Fdp_0p13.jpeg, id=47, 853.1875pt x 677.53125pt>
 File: Fdp_0p13.jpeg Graphic file (type jpg)
 
 <use Fdp_0p13.jpeg>
-Package pdftex.def Info: Fdp_0p13.jpeg used on input line 296.
+Package pdftex.def Info: Fdp_0p13.jpeg used on input line 336.
 (pdftex.def)             Requested size: 213.29636pt x 169.38239pt.
 
-<Fdp_1p3p0_0p33xcorr.jpeg, id=40, 853.1875pt x 677.53125pt>
+<Fdp_1p3p0_0p33xcorr.jpeg, id=48, 853.1875pt x 677.53125pt>
 File: Fdp_1p3p0_0p33xcorr.jpeg Graphic file (type jpg)
 
 <use Fdp_1p3p0_0p33xcorr.jpeg>
-Package pdftex.def Info: Fdp_1p3p0_0p33xcorr.jpeg used on input line 297.
+Package pdftex.def Info: Fdp_1p3p0_0p33xcorr.jpeg used on input line 337.
 (pdftex.def)             Requested size: 213.29636pt x 169.38239pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 292--300
+Underfull \hbox (badness 10000) in paragraph at lines 332--340
 
  []
 
-[7 <./Fdp_1p3_pi00p7.jpeg> <./Fdp_13p0.jpeg> <./Fdp_0p13.jpeg> <./Fdp_1p3p0_0p3
-3xcorr.jpeg>] [8] (./Draft_160624.aux) ) 
+[9 <./Fdp_1p3_pi00p7.jpeg> <./Fdp_13p0.jpeg> <./Fdp_0p13.jpeg> <./Fdp_1p3p0_0p3
+3xcorr.jpeg>] [10] (./Draft_160624.aux) ) 
 Here is how much of TeX's memory you used:
- 11062 strings out of 493089
- 189639 string characters out of 6134842
- 241243 words of memory out of 5000000
- 14372 multiletter control sequences out of 15000+600000
- 29351 words of font info for 75 fonts, out of 8000000 for 9000
+ 11075 strings out of 493089
+ 189945 string characters out of 6134842
+ 242289 words of memory out of 5000000
+ 14382 multiletter control sequences out of 15000+600000
+ 29827 words of font info for 77 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 38i,12n,37p,10385b,302s stack positions out of 5000i,500n,10000p,200000b,80000s
-{/usr/local/texlive/2015/texmf-dist/fon
-ts/enc/dvips/base/8r.enc}</usr/local/texlive/2015/texmf-dist/fonts/type1/public
-/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/
-amsfonts/cm/cmbx7.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/am
-sfonts/cm/cmmib10.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/am
-sfonts/cmextra/cmmib7.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/publi
-c/txfonts/rtxmi.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfo
-nts/rtxr.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txe
-x.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txsy.pfb><
-/usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txsyb.pfb></usr/l
-ocal/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txsyc.pfb></usr/local/t
-exlive/2015/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/local/texlive/201
-5/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/local/texlive/2015/texmf-di
-st/fonts/type1/urw/times/utmri8a.pfb>
-Output written on Draft_160624.pdf (8 pages, 534415 bytes).
+ 38i,12n,37p,10385b,293s stack positions out of 5000i,500n,10000p,200000b,80000s
+{/usr/local/texlive/2015/texmf-dist/fo
+nts/enc/dvips/base/8r.enc}</usr/local/texlive/2015/texmf-dist/fonts/type1/publi
+c/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public
+/amsfonts/cm/cmbx7.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/a
+msfonts/cm/cmmib10.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/a
+msfonts/cmextra/cmmib7.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/publ
+ic/txfonts/rtxmi.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txf
+onts/rtxr.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/tx
+ex.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txsy.pfb>
+</usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txsyb.pfb></usr/
+local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txsyc.pfb></usr/local/
+texlive/2015/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/local/texlive/20
+15/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/local/texlive/2015/texmf-d
+ist/fonts/type1/urw/times/utmri8a.pfb>
+Output written on Draft_160624.pdf (10 pages, 636265 bytes).
 PDF statistics:
- 91 PDF objects out of 1000 (max. 8388607)
- 60 compressed objects within 1 object stream
+ 98 PDF objects out of 1000 (max. 8388607)
+ 64 compressed objects within 1 object stream
  0 named destinations out of 1000 (max. 500000)
- 36 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 41 words of extra memory for PDF output out of 10000 (max. 10000000)
 
