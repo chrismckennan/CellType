@@ -24,7 +24,7 @@ library('ruv')
 library('corpcor')
 library('cate')
 library('qvalue')
-library('Rmosek')
+#library('Rmosek')
 ```
 
 ```{r Functions}
@@ -77,8 +77,8 @@ Var.Omega <- solve(QL.Cell$FI)
 For all proceeding simulations, I will assume only a single confounder (Neutrophils) with 70% sparsity, $n=200$ and $\sigma^2 = 0.15$. I will characterize the simulation using $LD$ and $D^{-1}\Omega$. In the below simulation, $\sigma_{LD} = 0.042$, $D^{-1}\Omega = -1.80$ and $\frac{\sigma}{\sqrt{n}} = 0.027$. Note that $\sigma_{LD}$ is on the order of $\frac{\sigma}{\sqrt{n}}$.
 ```{r GenerateData}
 p <- floor(327273/10)    #Number of usuable sites in a typical experiment
-n.sim <- 60   #Number of individuals
-r.sim <- 4     #Number of additional confounders
+n.sim <- 100   #Number of individuals
+r.sim <- 0     #Number of additional confounders
 K.sim <- 3     #Number of cell types
 d.sim <- 1     #Number of interesting covariates (either 0 or 1)
 pi0.B.sim <- rep(0.95, d.sim)    #Sparsity in B
@@ -404,10 +404,12 @@ Cov.CATE <- data.frame(Cov.CATE)
 
 CATE using the cell type information
 ```{r CATE_WithCell}
+n <- ncol(M)
 cate.Cell.m <- cate(~groupHutterite | T_cells + B_cells + Eos + Neutro + Mono, X.data=Cov.CATE, Y=t(M), r=4, fa.method="ml", adj.method="rr", calibrate=F)
 cov.mat.cell <- cbind(as.matrix(Cov.CATE), cate.Cell.m$Z)
 beta.cell <- M %*% cov.mat.cell %*% solve(t(cov.mat.cell)%*%cov.mat.cell)
 dof.cell <- n - ncol(cov.mat.cell)
+Gamma.cell <- cate.Cell.m$Gamma
 Sigma.cell <- rowSums((M %*% (diag(n) - cov.mat.cell%*%solve(t(cov.mat.cell)%*%cov.mat.cell)%*%t(cov.mat.cell))) * M) / dof.cell
 z.cell <- beta.cell[,2] / sqrt(Sigma.cell) / sqrt(solve(t(cov.mat.cell) %*% cov.mat.cell)[2,2])
 p.values.cell.group <- 2 - 2*pt(abs(z.cell), df=dof.cell)
@@ -538,7 +540,7 @@ Here we test to see if we underestimate $\Omega$ when we can estimate some of th
 ```{r UnderestimateOmega_all_Normal_Theorem}
 p.und <- floor(327273 / 10)
 r.und <- 3
-n.und <- 100
+n.und <- 200
 n.repeat <- 50
 mult.mat <- cbind( c(0.1, 0.1, 0.1), c(1,1,1), c(1,2,2), c(1,2,5), c(1,2,1000) )
 norm.true.mat <- matrix(NA, nrow=n.repeat, ncol=ncol(mult.mat))     #Simulation results x Simulation Type
@@ -546,15 +548,16 @@ norm.est.mat <- matrix(NA, nrow=n.repeat, ncol=ncol(mult.mat))
 norm.predict.mat <- matrix(NA, nrow=n.repeat, ncol=ncol(mult.mat))
 lm.vec <- rep(NA, length(mult.vec))
 
-Sigma.und <- rep(0.15, p.und)
+Sigma.und <- 1/rgamma(p.und, shape=6, rate=6)
+Sigma.und <- rep(1, p.und)
 for (i in 1:ncol(mult.mat)) {
   mult.vec.i <- mult.mat[,i]
-  Gamma.und <- sweep(matrix(rnorm(r.und*p.und), nrow=p.und, ncol=r.und) * sqrt(0.15), MARGIN=2, sqrt(mult.vec.i/n.und), '*')
+  Gamma.und <- sweep(matrix(rnorm(r.und*p.und), nrow=p.und, ncol=r.und) * sqrt(Sigma.und), MARGIN=2, sqrt(mult.vec.i/n.und), '*')
   V.und <- svd(t(Gamma.und / Sigma.und) %*% Gamma.und)$v
   Gamma.und <- Gamma.und %*% V.und
   for (j in 1:n.repeat) {
     X.und <- cbind(rep(1,n.und), rbinom(n=n.und, size=1, prob=0.5))
-    alpha.und <- matrix(max(rnorm(1)*0.05 + 0.2, 0.1), nrow=r.und, ncol=1)
+    alpha.und <- matrix(sqrt(n.und)*c(0.9, 0.9, 0.9), nrow=r.und, ncol=1)
     out.est <- CompareEstimate(X.und, alpha.und, Gamma.und, Sigma.und)
     norm.true.mat[j,i] <- t(out.est$alpha.true) %*% out.est$alpha.true
     norm.est.mat[j,i] <- t(out.est$alpha.hat) %*% out.est$alpha.hat
@@ -576,7 +579,7 @@ for (i in 1:ncol(mult.mat)) {
 }
 dev.off()
 ```
-
+My prediction appears to be correct. Not only that, but $\left( \hat{\Gamma}^T\hat{\Sigma}^{-1}\hat{\Gamma} \right)^{-1}\hat{\Gamma}^T \hat{\Sigma}^{-1}\Gamma \to \text{diag}\left( \frac{\lambda_1}{\lambda_1 + 1}, \ldots, \frac{\lambda_r}{\lambda_r + 1} \right)$ when $n, p, \frac{p}{n} \to \infty$.
 
 The below simulates data according to a T-distribution. Below, I will assume that the confounders are normally distributed and the residuals are T-distribution with 5 degrees of freedom. This is so the residuals have finite excess kurtosis.
 ```{r UnderestimateOmega_all_ET4p1}

@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015) (preloaded format=pdflatex 2015.5.24)  29 JUL 2016 18:02
+This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015) (preloaded format=pdflatex 2015.5.24)  5 OCT 2016 08:48
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -85,6 +85,18 @@ LaTeX Font Info:    Redeclaring font encoding OMS on input line 567.
 LaTeX Info: Redefining \[ on input line 2665.
 LaTeX Info: Redefining \] on input line 2666.
 )
+(/usr/local/texlive/2015/texmf-dist/tex/latex/amscls/amsthm.sty
+Package: amsthm 2015/03/04 v2.20.2
+\thm@style=\toks20
+\thm@bodyfont=\toks21
+\thm@headfont=\toks22
+\thm@notefont=\toks23
+\thm@headpunct=\toks24
+\thm@preskip=\skip46
+\thm@postskip=\skip47
+\thm@headsep=\skip48
+\dth@everypar=\toks25
+)
 (/usr/local/texlive/2015/texmf-dist/tex/latex/amsfonts/amssymb.sty
 Package: amssymb 2013/01/14 v3.01 AMS font symbols
 
@@ -107,7 +119,7 @@ Package: graphicx 2014/10/28 v1.0g Enhanced LaTeX Graphics (DPC,SPQR)
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/graphics/keyval.sty
 Package: keyval 2014/10/28 v1.15 key=value parser (DPC)
-\KV@toks@=\toks20
+\KV@toks@=\toks26
 )
 (/usr/local/texlive/2015/texmf-dist/tex/latex/graphics/graphics.sty
 Package: graphics 2014/10/28 v1.0p Standard LaTeX Graphics (DPC,SPQR)
@@ -174,7 +186,7 @@ Package: ifxetex 2010/09/12 v0.6 Provides ifxetex conditional
 \Gm@layoutheight=\dimen120
 \Gm@layouthoffset=\dimen121
 \Gm@layoutvoffset=\dimen122
-\Gm@dimlist=\toks21
+\Gm@dimlist=\toks27
 )
 (/usr/local/texlive/2015/texmf-dist/tex/latex/jknapltx/mathrsfs.sty
 Package: mathrsfs 1996/01/01 Math RSFS package v1.0 (jk)
@@ -219,12 +231,12 @@ L3 Module: l3skip 2014/08/23 v5354 L3 Dimensions and skips
 \l_tmpb_dim=\dimen126
 \g_tmpa_dim=\dimen127
 \g_tmpb_dim=\dimen128
-\c_zero_skip=\skip46
-\c_max_skip=\skip47
-\l_tmpa_skip=\skip48
-\l_tmpb_skip=\skip49
-\g_tmpa_skip=\skip50
-\g_tmpb_skip=\skip51
+\c_zero_skip=\skip49
+\c_max_skip=\skip50
+\l_tmpa_skip=\skip51
+\l_tmpb_skip=\skip52
+\g_tmpa_skip=\skip53
+\g_tmpb_skip=\skip54
 \c_zero_muskip=\muskip11
 \c_max_muskip=\muskip12
 \l_tmpa_muskip=\muskip13
@@ -343,36 +355,36 @@ Package: calc 2014/10/28 v4.3 Infix arithmetic (KKT,FJ)
 \calc@Bcount=\count128
 \calc@Adimen=\dimen154
 \calc@Bdimen=\dimen155
-\calc@Askip=\skip52
-\calc@Bskip=\skip53
+\calc@Askip=\skip55
+\calc@Bskip=\skip56
 LaTeX Info: Redefining \setlength on input line 80.
 LaTeX Info: Redefining \addtolength on input line 81.
 \calc@Ccount=\count129
-\calc@Cskip=\skip54
+\calc@Cskip=\skip57
 )
 \inf@bad=\count130
 \maxint=\count131
 \listwidth=\dimen156
 \eqnumsep=\dimen157
 \eqmargin=\dimen158
-\eqlinespacing=\skip55
-\eqlineskip=\skip56
+\eqlinespacing=\skip58
+\eqlineskip=\skip59
 \eqlineskiplimit=\dimen159
 \eqbinoffset=\muskip17
 \eqdelimoffset=\muskip18
 \eqindentstep=\dimen160
-\eqstyle=\toks22
+\eqstyle=\toks28
 \eqbreakdepth=\count132
 \eqinterlinepenalty=\count133
 \intereqpenalty=\count134
-\intereqskip=\skip57
+\intereqskip=\skip60
 \prerelpenalty=\count135
 \prebinoppenalty=\count136
 \Dmedmuskip=\muskip19
 \Dthickmuskip=\muskip20
-\eqleftskip=\skip58
-\eqrightskip=\skip59
-\eq@vspan=\skip60
+\eqleftskip=\skip61
+\eqrightskip=\skip62
+\eq@vspan=\skip63
 \eq@binoffset=\muskip21
 \EQ@box=\box43
 \EQ@copy=\box44
@@ -402,15 +414,15 @@ LaTeX Info: Redefining \addtolength on input line 81.
 \mathindent=\dimen178
 \eq@final@linecount=\count141
 \eq@wdR=\dimen179
-\EQ@continue=\toks23
+\EQ@continue=\toks29
 \lr@level=\count142
-\GRP@queue=\toks24
+\GRP@queue=\toks30
 \GRP@box=\box47
 \GRP@wholebox=\box48
-\darraycolsep=\skip61
+\darraycolsep=\skip64
 \cur@row=\count143
 \cur@col=\count144
-\conditionsep=\skip62
+\conditionsep=\skip65
 )
 (/usr/local/texlive/2015/texmf-dist/tex/latex/mathtools/mathtools.sty
 Package: mathtools 2015/05/11 v1.16 mathematical typesetting tools
@@ -424,7 +436,7 @@ LaTeX Info: Thecontrolsequence`\['isalreadyrobust on input line 129.
 LaTeX Info: Thecontrolsequence`\]'isalreadyrobust on input line 129.
 \g_MT_multlinerow_int=\count145
 \l_MT_multwidth_dim=\dimen180
-\origjot=\skip63
+\origjot=\skip66
 \l_MT_shortvdotswithinadjustabove_dim=\dimen181
 \l_MT_shortvdotswithinadjustbelow_dim=\dimen182
 \l_MT_above_intertext_sep=\dimen183
@@ -439,10 +451,10 @@ Package: rotating 2009/03/28 v2.16a rotated objects in LaTeX
 Package: ifthen 2014/09/29 v1.1c Standard LaTeX ifthen package (DPC)
 )
 \c@r@tfl@t=\count146
-\rotFPtop=\skip64
-\rotFPbot=\skip65
+\rotFPtop=\skip67
+\rotFPbot=\skip68
 \rot@float@box=\box49
-\rot@mess@toks=\toks25
+\rot@mess@toks=\toks31
 )
 (/usr/local/texlive/2015/texmf-dist/tex/latex/tools/bm.sty
 Package: bm 2014/10/28 v1.1c Bold Symbol Support (DPC/FMi)
@@ -532,77 +544,80 @@ LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `bold'
 LaTeX Font Info:    Overwriting symbol font `largesymbolsA' in version `bold'
 (Font)                  U/txexa/m/n --> U/txexa/bx/n on input line 129.
 LaTeX Info: Redefining \not on input line 1043.
+LaTeX Info: Redefining \textsquare on input line 1063.
+LaTeX Info: Redefining \openbox on input line 1064.
 )
 (/usr/local/texlive/2015/texmf-dist/tex/latex/units/units.sty
 Package: units 1998/08/04 v0.9b Typesetting units
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/units/nicefrac.sty
 Package: nicefrac 1998/08/04 v0.9b Nice fractions
-\L@UnitsRaiseDisplaystyle=\skip66
-\L@UnitsRaiseTextstyle=\skip67
-\L@UnitsRaiseScriptstyle=\skip68
+\L@UnitsRaiseDisplaystyle=\skip69
+\L@UnitsRaiseTextstyle=\skip70
+\L@UnitsRaiseScriptstyle=\skip71
 ))
 (/usr/local/texlive/2015/texmf-dist/tex/latex/setspace/setspace.sty
 Package: setspace 2011/12/19 v6.7a set line spacing
 )
 \c@theorem=\count147
+\c@corollary=\count148
 
 (./Draft_160624.aux)
 \openout1 = `Draft_160624.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/txmi/m/it on input line 44.
-LaTeX Font Info:    Try loading font information for OML+txmi on input line 44.
+LaTeX Font Info:    Checking defaults for OML/txmi/m/it on input line 47.
+LaTeX Font Info:    Try loading font information for OML+txmi on input line 47.
 
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/omltxmi.fd
 File: omltxmi.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    ... okay on input line 44.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 44.
-LaTeX Font Info:    ... okay on input line 44.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 44.
-LaTeX Font Info:    ... okay on input line 44.
-LaTeX Font Info:    Checking defaults for OMS/txsy/m/n on input line 44.
-LaTeX Font Info:    Try loading font information for OMS+txsy on input line 44.
+LaTeX Font Info:    ... okay on input line 47.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 47.
+LaTeX Font Info:    ... okay on input line 47.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 47.
+LaTeX Font Info:    ... okay on input line 47.
+LaTeX Font Info:    Checking defaults for OMS/txsy/m/n on input line 47.
+LaTeX Font Info:    Try loading font information for OMS+txsy on input line 47.
 
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/omstxsy.fd
 File: omstxsy.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    ... okay on input line 44.
-LaTeX Font Info:    Checking defaults for OMX/txex/m/n on input line 44.
-LaTeX Font Info:    Try loading font information for OMX+txex on input line 44.
+LaTeX Font Info:    ... okay on input line 47.
+LaTeX Font Info:    Checking defaults for OMX/txex/m/n on input line 47.
+LaTeX Font Info:    Try loading font information for OMX+txex on input line 47.
 
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/omxtxex.fd
 File: omxtxex.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    ... okay on input line 44.
-LaTeX Font Info:    Checking defaults for U/txexa/m/n on input line 44.
-LaTeX Font Info:    Try loading font information for U+txexa on input line 44.
+LaTeX Font Info:    ... okay on input line 47.
+LaTeX Font Info:    Checking defaults for U/txexa/m/n on input line 47.
+LaTeX Font Info:    Try loading font information for U+txexa on input line 47.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxexa.fd
 File: utxexa.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    ... okay on input line 44.
-LaTeX Font Info:    Try loading font information for OT1+txr on input line 44.
+LaTeX Font Info:    ... okay on input line 47.
+LaTeX Font Info:    Try loading font information for OT1+txr on input line 47.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/ot1txr.fd
 File: ot1txr.fd 2000/12/15 v3.1
 )
 (/usr/local/texlive/2015/texmf-dist/tex/context/base/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
-\scratchcounter=\count148
+\scratchcounter=\count149
 \scratchdimen=\dimen187
 \scratchbox=\box50
-\nofMPsegments=\count149
-\nofMParguments=\count150
-\everyMPshowfont=\toks26
-\MPscratchCnt=\count151
+\nofMPsegments=\count150
+\nofMParguments=\count151
+\everyMPshowfont=\toks32
+\MPscratchCnt=\count152
 \MPscratchDim=\dimen188
-\MPnumerator=\count152
-\makeMPintoPDFobject=\count153
-\everyMPtoPDFconversion=\toks27
+\MPnumerator=\count153
+\makeMPintoPDFobject=\count154
+\everyMPtoPDFconversion=\toks33
 ) (/usr/local/texlive/2015/texmf-dist/tex/generic/oberdiek/pdftexcmds.sty
 Package: pdftexcmds 2011/11/29 v0.20 Utility functions of pdfTeX for LuaTeX (HO
 )
@@ -681,39 +696,39 @@ e
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-LaTeX Font Info:    Try loading font information for U+txsya on input line 53.
+LaTeX Font Info:    Try loading font information for U+txsya on input line 56.
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxsya.fd
 File: utxsya.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    Try loading font information for U+txsyb on input line 53.
+LaTeX Font Info:    Try loading font information for U+txsyb on input line 56.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxsyb.fd
 File: utxsyb.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    Try loading font information for U+rsfs on input line 53.
+LaTeX Font Info:    Try loading font information for U+rsfs on input line 56.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/jknapltx/ursfs.fd
 File: ursfs.fd 1998/03/24 rsfs font definition file (jk)
 )
-LaTeX Font Info:    Try loading font information for U+txmia on input line 53.
+LaTeX Font Info:    Try loading font information for U+txmia on input line 56.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxmia.fd
 File: utxmia.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    Try loading font information for U+txsyc on input line 53.
+LaTeX Font Info:    Try loading font information for U+txsyc on input line 56.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/utxsyc.fd
 File: utxsyc.fd 2000/12/15 v3.1
 )
-LaTeX Font Info:    Try loading font information for OMS+txr on input line 69.
+LaTeX Font Info:    Try loading font information for OMS+txr on input line 72.
 
 (/usr/local/texlive/2015/texmf-dist/tex/latex/txfonts/omstxr.fd
 File: omstxr.fd 2000/12/15 v3.1
 )
 LaTeX Font Info:    Font shape `OMS/txr/m/n' in size <10> not available
-(Font)              Font shape `OMS/txsy/m/n' tried instead on input line 69.
+(Font)              Font shape `OMS/txsy/m/n' tried instead on input line 72.
 
-Overfull \hbox (1.2091pt too wide) in paragraph at lines 83--88
+Overfull \hbox (1.2091pt too wide) in paragraph at lines 86--91
 \OT1/txr/m/n/10 Let $\OML/cmm/b/it/10 Y[]$ \OT1/txr/m/n/10 be the methy-la-tion
  re-sponse mea-sured on $\OML/txmi/m/it/10 p$ \OT1/txr/m/n/10 CpG sites across 
 $\OML/txmi/m/it/10 n$ \OT1/txr/m/n/10 in-de-pen-dent in-di-vid-u-als, $\OML/cmm
@@ -724,156 +739,300 @@ $\OML/txmi/m/it/10 n$ \OT1/txr/m/n/10 in-de-pen-dent in-di-vid-u-als, $\OML/cmm
 
 {/usr/local/texlive/2015/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
 [2] [3]
-Underfull \hbox (badness 10000) in paragraph at lines 176--179
+Underfull \hbox (badness 10000) in paragraph at lines 179--182
 
  []
 
-[4]
-<UnderestimatingOmega_Multipliers_Theorem.jpeg, id=27, 1059.96pt x 631.35875pt>
+[4] [5] [6]
+Overfull \hbox (13.9496pt too wide) detected at line 326
+ []$[]  [][]\OT1/cmr/bx/n/10 ^^F[][] \OT1/txr/m/n/10 = [][]\OML/cmm/b/it/10 Y[]
+\OT1/cmr/bx/n/10 ^^F[]\OML/cmm/b/it/10 Y[] \OT1/txr/m/n/10 = [][] [][] \OT1/cmr
+/bx/n/10 ^^F[] [] [] \OT1/txr/m/n/10 = []\OT1/cmr/bx/n/10 ^^D[] [] ^^D[] \OT1/t
+xr/m/n/10 + [][]\OT1/cmr/bx/n/10 ^^D[]\OML/cmm/b/it/10 L[]\OT1/cmr/bx/n/10 ^^F[
+]\OML/cmm/b/it/10 E[]$ 
+ []
+
+[7]
+Overfull \hbox (3.07942pt too wide) in paragraph at lines 355--359
+\OT1/txr/m/n/10 Let $\OT1/cmr/bx/n/10 ^^H \OT1/txr/m/n/10 = \OML/cmm/b/it/10 Q[
+] [] Q[]$ \OT1/txr/m/n/10 where $\OML/txmi/m/it/10 ^^^[] > [] > ^^^[] > \OT1/tx
+r/m/n/10 0$ be the eigen de-com-po-si-tion of $\OT1/cmr/bx/n/10 ^^H$ \OT1/txr/m
+/n/10 where $\OML/cmm/b/it/10 Q \OT1/txr/m/n/10 = [] \OMS/txsy/m/n/10 2
+ []
+
+[8]
+Overfull \hbox (6.60086pt too wide) detected at line 396
+[][] \OT1/txr/m/n/10 = \OML/txmi/m/it/10 n [][] []\OT1/cmr/bx/n/10 ^^F[]\OML/cm
+m/b/it/10 YY[]\OT1/cmr/bx/n/10 ^^F[][] [][] \OT1/txr/m/n/10 = \OML/txmi/m/it/10
+ n [][] []\OT1/cmr/bx/n/10 ^^F[][][]^^F[][] [][] \OT1/txr/m/n/10 = \OML/txmi/m/
+it/10 nI[]
+ []
+
+[9]
+Overfull \hbox (38.3237pt too wide) detected at line 459
+ []$[]  \OML/cmm/b/it/10 L[]J[]U \OT1/txr/m/n/10 = \OML/cmm/b/it/10 L[]\OT1/cmr
+/bx/n/10 ^^F[]\OML/cmm/b/it/10 U \OMS/txsy/m/n/10 ^^@ \OML/cmm/b/it/10 L[]\OT1/
+cmr/bx/n/10 ^^F[]\OML/cmm/b/it/10 L[] [][] L[]\OT1/cmr/bx/n/10 ^^F[]\OML/cmm/b/
+it/10 U \OT1/txr/m/n/10 = [][] \OML/cmm/b/it/10 L[]\OT1/cmr/bx/n/10 ^^F[]\OML/c
+mm/b/it/10 U \OT1/txr/m/n/10 + \OML/txmi/m/it/10 o[] []$ 
+ []
+
+
+Overfull \hbox (3.18867pt too wide) detected at line 481
+ []$[] \OT1/txr/m/n/10 = \OMS/txsy/m/n/10 ^^@[] [][][] ^^@ [] [] [] ^^@ [] \OT1
+/txr/m/n/10 + [] + \OMS/txsy/m/n/10 O[] [] \OML/txmi/m/it/10 :$ []  
+ []
+
+[10]
+Overfull \hbox (29.66339pt too wide) detected at line 518
+ []$[]  [][][] \OMS/txsy/m/n/10 ^^T O[] [] [][][] ^^T O[] [] [][][] \OT1/txr/m/
+n/10 + \OMS/txsy/m/n/10 O[] [] [][][]$ 
+ []
+
+[11]
+<UnderestimatingOmega_Multipliers_Theorem.jpeg, id=54, 1059.96pt x 631.35875pt>
 File: UnderestimatingOmega_Multipliers_Theorem.jpeg Graphic file (type jpg)
 <use UnderestimatingOmega_Multipliers_Theorem.jpeg>
 Package pdftex.def Info: UnderestimatingOmega_Multipliers_Theorem.jpeg used on 
-input line 211.
+input line 534.
 (pdftex.def)             Requested size: 423.97649pt x 252.53902pt.
 
-<UnderestimatingOmega_Multipliers.jpeg, id=28, 1059.96pt x 631.35875pt>
+<UnderestimatingOmega_Multipliers.jpeg, id=55, 1059.96pt x 631.35875pt>
 File: UnderestimatingOmega_Multipliers.jpeg Graphic file (type jpg)
 
 <use UnderestimatingOmega_Multipliers.jpeg>
 Package pdftex.def Info: UnderestimatingOmega_Multipliers.jpeg used on input li
-ne 218.
+ne 541.
 (pdftex.def)             Requested size: 423.97649pt x 252.53902pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 214--222
+Underfull \hbox (badness 10000) in paragraph at lines 537--545
 
  []
 
-[5 <./UnderestimatingOmega_Multipliers_Theorem.jpeg>] [6 <./UnderestimatingOmeg
-a_Multipliers.jpeg>]
-<AmishHutterite_CellPvalues.jpeg, id=35, 615.29875pt x 492.84125pt>
+[12 <./UnderestimatingOmega_Multipliers_Theorem.jpeg>] [13 <./UnderestimatingOm
+ega_Multipliers.jpeg>]
+<AmishHutterite_CellPvalues.jpeg, id=63, 615.29875pt x 492.84125pt>
 File: AmishHutterite_CellPvalues.jpeg Graphic file (type jpg)
 
 <use AmishHutterite_CellPvalues.jpeg>
-Package pdftex.def Info: AmishHutterite_CellPvalues.jpeg used on input line 300
+Package pdftex.def Info: AmishHutterite_CellPvalues.jpeg used on input line 623
 .
 (pdftex.def)             Requested size: 246.11513pt x 197.133pt.
 
-<AmishHutterite_noCellPvalues.jpeg, id=36, 615.29875pt x 492.84125pt>
+<AmishHutterite_noCellPvalues.jpeg, id=64, 615.29875pt x 492.84125pt>
 File: AmishHutterite_noCellPvalues.jpeg Graphic file (type jpg)
 
 <use AmishHutterite_noCellPvalues.jpeg>
-Package pdftex.def Info: AmishHutterite_noCellPvalues.jpeg used on input line 3
-01.
+Package pdftex.def Info: AmishHutterite_noCellPvalues.jpeg used on input line 6
+24.
 (pdftex.def)             Requested size: 246.11513pt x 197.133pt.
 
-Underfull \hbox (badness 6047) in paragraph at lines 306--307
+Underfull \hbox (badness 6047) in paragraph at lines 629--630
 []\OT1/txr/m/n/10 Amish $\OMS/txsy/m/n/10 ^^@$ \OT1/txr/m/n/10 Hut-terite
  []
 
 
-Overfull \hbox (0.66087pt too wide) in paragraph at lines 310--310
+Overfull \hbox (0.66087pt too wide) in paragraph at lines 633--633
 []\OT1/txr/m/n/10 Eosinophil| 
  []
 
 
-Overfull \hbox (0.65088pt too wide) in paragraph at lines 311--311
+Overfull \hbox (0.65088pt too wide) in paragraph at lines 634--634
 []\OT1/txr/m/n/10 Neutrophil| 
  []
 
 
-Overfull \hbox (24.37524pt too wide) in paragraph at lines 298--314
+Overfull \hbox (24.37524pt too wide) in paragraph at lines 621--637
 [] [] 
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 298--314
+Underfull \hbox (badness 10000) in paragraph at lines 621--637
 
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 298--314
+Underfull \hbox (badness 10000) in paragraph at lines 621--637
 
  []
 
-[7]
-Underfull \hbox (badness 10000) in paragraph at lines 322--322
+[14]
+Underfull \hbox (badness 10000) in paragraph at lines 645--645
 []\OT1/txr/m/n/10 Amish-Hutterite
  []
 
 
-Underfull \hbox (badness 8056) in paragraph at lines 322--322
+Underfull \hbox (badness 8056) in paragraph at lines 645--645
 []\OT1/txr/m/n/10 Cell Type Stand.
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 322--322
+Underfull \hbox (badness 10000) in paragraph at lines 645--645
 []\OT1/txr/m/n/10 Observed Cor-re-la-tion
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 318--330
+Underfull \hbox (badness 10000) in paragraph at lines 641--653
 
  []
 
-[8 <./AmishHutterite_CellPvalues.jpeg> <./AmishHutterite_noCellPvalues.jpeg>]
-<Fdp_1p3_pi00p7.jpeg, id=45, 853.1875pt x 677.53125pt>
+[15 <./AmishHutterite_CellPvalues.jpeg> <./AmishHutterite_noCellPvalues.jpeg>]
+<Fdp_1p3_pi00p7.jpeg, id=71, 853.1875pt x 677.53125pt>
 File: Fdp_1p3_pi00p7.jpeg Graphic file (type jpg)
 
 <use Fdp_1p3_pi00p7.jpeg>
-Package pdftex.def Info: Fdp_1p3_pi00p7.jpeg used on input line 334.
+Package pdftex.def Info: Fdp_1p3_pi00p7.jpeg used on input line 657.
 (pdftex.def)             Requested size: 213.29636pt x 169.38239pt.
- <Fdp_13p0.jpeg, id=46, 853.1875pt x 677.53125pt>
+ <Fdp_13p0.jpeg, id=72, 853.1875pt x 677.53125pt>
 File: Fdp_13p0.jpeg Graphic file (type jpg)
 
 <use Fdp_13p0.jpeg>
-Package pdftex.def Info: Fdp_13p0.jpeg used on input line 335.
+Package pdftex.def Info: Fdp_13p0.jpeg used on input line 658.
 (pdftex.def)             Requested size: 213.29636pt x 169.38239pt.
- <Fdp_0p13.jpeg, id=47, 853.1875pt x 677.53125pt>
+ <Fdp_0p13.jpeg, id=73, 853.1875pt x 677.53125pt>
 File: Fdp_0p13.jpeg Graphic file (type jpg)
 
 <use Fdp_0p13.jpeg>
-Package pdftex.def Info: Fdp_0p13.jpeg used on input line 336.
+Package pdftex.def Info: Fdp_0p13.jpeg used on input line 659.
 (pdftex.def)             Requested size: 213.29636pt x 169.38239pt.
 
-<Fdp_1p3p0_0p33xcorr.jpeg, id=48, 853.1875pt x 677.53125pt>
+<Fdp_1p3p0_0p33xcorr.jpeg, id=74, 853.1875pt x 677.53125pt>
 File: Fdp_1p3p0_0p33xcorr.jpeg Graphic file (type jpg)
 
 <use Fdp_1p3p0_0p33xcorr.jpeg>
-Package pdftex.def Info: Fdp_1p3p0_0p33xcorr.jpeg used on input line 337.
+Package pdftex.def Info: Fdp_1p3p0_0p33xcorr.jpeg used on input line 660.
 (pdftex.def)             Requested size: 213.29636pt x 169.38239pt.
 
-Underfull \hbox (badness 10000) in paragraph at lines 332--340
+Underfull \hbox (badness 10000) in paragraph at lines 655--663
 
  []
 
-[9 <./Fdp_1p3_pi00p7.jpeg> <./Fdp_13p0.jpeg> <./Fdp_0p13.jpeg> <./Fdp_1p3p0_0p3
-3xcorr.jpeg>] [10] (./Draft_160624.aux) ) 
+[16 <./Fdp_1p3_pi00p7.jpeg> <./Fdp_13p0.jpeg> <./Fdp_0p13.jpeg> <./Fdp_1p3p0_0p
+33xcorr.jpeg>] [17]
+Underfull \hbox (badness 10000) in paragraph at lines 737--739
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 737--739
+
+ []
+
+
+Overfull \hbox (6.12422pt too wide) detected at line 758
+ []$[] [] [][] \OML/txmi/m/it/10 :$ []  
+ []
+
+[18]
+Overfull \hbox (47.94044pt too wide) detected at line 794
+ []$[]  []\OML/txmi/m/it/10 A[]L[]\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/it/10 E[]E[]
+\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/it/10 LA[] \OT1/txr/m/n/10 = [] + [] + []$ 
+ []
+
+[19]
+Overfull \hbox (19.14528pt too wide) detected at line 799
+ []$[]  []\OML/txmi/m/it/10 A[][]\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/it/10 E[]E[]\
+OT1/txr/m/n/10 ^^F[][]\OML/txmi/m/it/10 A[] \OMS/txsy/m/n/10 ^^X [][] [][]\OML/
+txmi/m/it/10 MN[] [] MN[] [][] [][] \OT1/txr/m/n/10 =$ 
+ []
+
+
+Overfull \hbox (30.14241pt too wide) detected at line 808
+[] [][] []\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/it/10 E[]E[]\OT1/txr/m/n/10 ^^F[]\OM
+L/txmi/m/it/10 E[]C[]M[]A[] [] [][] [][] [] [][]
+ []
+
+
+Overfull \hbox (30.14241pt too wide) detected at line 819
+[] [][] []\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/it/10 E[]E[]\OT1/txr/m/n/10 ^^F[]\OM
+L/txmi/m/it/10 E[]C[]M[]A[] [] [][] [][] [] [][]
+ []
+
+[20]
+Overfull \hbox (46.61436pt too wide) detected at line 834
+ []$[]  []\OML/txmi/m/it/10 A[][]\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/it/10 E[]E[]\
+OT1/txr/m/n/10 ^^F[][]\OML/txmi/m/it/10 A[] \OT1/txr/m/n/10 = [] [][] \OML/txmi
+/m/it/10 M[] [] M[] [][]$ 
+ []
+
+
+Overfull \hbox (27.0072pt too wide) detected at line 849
+ []$[] [] [] [] [] \OT1/txr/m/n/10 +\OML/txmi/m/it/10 R[] [] R[] \OT1/txr/m/n/1
+0 = \OMS/txsy/m/n/10 O[] []$ []  
+ []
+
+[21]
+Overfull \hbox (20.2986pt too wide) detected at line 877
+ []$[]  []\OML/txmi/m/it/10 C[][] \OT1/txr/m/n/10 = []\OML/txmi/m/it/10 C[]Y[]J
+[]L \OT1/txr/m/n/10 = \OML/txmi/m/it/10 C[]Y[]\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/
+it/10 L [][] \OT1/txr/m/n/10 = \OML/txmi/m/it/10 M[][]\OT1/txr/m/n/10 ^^F[]\OML
+/txmi/m/it/10 L [][] \OT1/txr/m/n/10 + []\OML/txmi/m/it/10 C[]E[]\OT1/txr/m/n/1
+0 ^^F[]\OML/txmi/m/it/10 L [][]$ 
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 877--881
+
+ []
+
+[22]
+Overfull \hbox (5.39874pt too wide) detected at line 889
+\OML/txmi/m/it/10 `[] [] \OT1/txr/m/n/10 = \OMS/txsy/m/n/10 ^^@[] [][][] ^^@ []
+ [] [] \OT1/txr/m/n/10 = [] [][][] \OMS/txsy/m/n/10 ^^@ [] [] [] \OT1/txr/m/n/1
+0 + [] [] []
+ []
+
+
+Overfull \hbox (6.10742pt too wide) in paragraph at lines 895--897
+\OT1/txr/m/n/10 If we set the above equa-tion equal to 0 and we can prove $\OML
+/txmi/m/it/10 L[]\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/it/10 L \OT1/txr/m/n/10 = \OM
+S/txsy/m/n/10 O[] []$\OT1/txr/m/n/10 , then we must have $\OML/txmi/m/it/10 L[]
+\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/it/10 L \OT1/txr/m/n/10 = []\OML/txmi/m/it/10 
+L[]\OT1/txr/m/n/10 ^^F[]\OML/txmi/m/it/10 Y[]C[] \OT1/txr/m/n/10 +
+ []
+
+
+Overfull \hbox (18.82323pt too wide) detected at line 914
+ []$[] \OT1/txr/m/n/10 + \OML/txmi/m/it/10 []\OT1/txr/m/n/10 ^^F[] [] \OML/txm
+i/m/it/10 :$ []  
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 914--918
+
+ []
+
+[23] [24] (./Draft_160624.aux) ) 
 Here is how much of TeX's memory you used:
- 11075 strings out of 493089
- 189945 string characters out of 6134842
- 242289 words of memory out of 5000000
- 14382 multiletter control sequences out of 15000+600000
- 29827 words of font info for 77 fonts, out of 8000000 for 9000
+ 11156 strings out of 493089
+ 190909 string characters out of 6134842
+ 251547 words of memory out of 5000000
+ 14454 multiletter control sequences out of 15000+600000
+ 33709 words of font info for 83 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 38i,12n,37p,10385b,293s stack positions out of 5000i,500n,10000p,200000b,80000s
-{/usr/local/texlive/2015/texmf-dist/fo
-nts/enc/dvips/base/8r.enc}</usr/local/texlive/2015/texmf-dist/fonts/type1/publi
-c/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public
-/amsfonts/cm/cmbx7.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/a
-msfonts/cm/cmmib10.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/a
-msfonts/cmextra/cmmib7.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/publ
-ic/txfonts/rtxmi.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txf
-onts/rtxr.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/tx
-ex.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txsy.pfb>
-</usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txsyb.pfb></usr/
-local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txsyc.pfb></usr/local/
-texlive/2015/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/local/texlive/20
-15/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/local/texlive/2015/texmf-d
-ist/fonts/type1/urw/times/utmri8a.pfb>
-Output written on Draft_160624.pdf (10 pages, 636265 bytes).
+ 38i,23n,37p,10385b,354s stack positions out of 5000i,500n,10000p,200000b,80000s
+{/usr/local/texlive/2015/texmf-dist/fonts/enc/d
+vips/base/8r.enc}</usr/local/texlive/2015/texmf-dist/fonts/type1/public/amsfont
+s/cm/cmbx10.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/amsfonts
+/cm/cmbx7.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/amsfonts/c
+m/cmmib10.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/amsfonts/c
+mextra/cmmib7.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfont
+s/rtxi.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/rtxmi
+.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/rtxr.pfb></
+usr/local/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txex.pfb></usr/loc
+al/texlive/2015/texmf-dist/fonts/type1/public/txfonts/txexa.pfb></usr/local/tex
+live/2015/texmf-dist/fonts/type1/public/txfonts/txsy.pfb></usr/local/texlive/20
+15/texmf-dist/fonts/type1/public/txfonts/txsya.pfb></usr/local/texlive/2015/tex
+mf-dist/fonts/type1/public/txfonts/txsyb.pfb></usr/local/texlive/2015/texmf-dis
+t/fonts/type1/public/txfonts/txsyc.pfb></usr/local/texlive/2015/texmf-dist/font
+s/type1/urw/times/utmb8a.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/ur
+w/times/utmbi8a.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/urw/times/u
+tmr8a.pfb></usr/local/texlive/2015/texmf-dist/fonts/type1/urw/times/utmri8a.pfb
+>
+Output written on Draft_160624.pdf (24 pages, 728898 bytes).
 PDF statistics:
- 98 PDF objects out of 1000 (max. 8388607)
- 64 compressed objects within 1 object stream
+ 159 PDF objects out of 1000 (max. 8388607)
+ 106 compressed objects within 2 object streams
  0 named destinations out of 1000 (max. 500000)
  41 words of extra memory for PDF output out of 10000 (max. 10000000)
 

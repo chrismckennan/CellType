@@ -24,7 +24,7 @@ library('ruv')
 library('corpcor')
 library('cate')
 library('qvalue')
-library('Rmosek')
+library('turboEM')
 ```
 
 ```{r Functions}
@@ -36,6 +36,7 @@ source("../R/EstimateBeta.R")
 source("../R/CrudeEstDim.R")
 source("../R/AnalyzeSimResults.R")
 source("../R/PartialEM.R")
+source("../R/TurboEM_Functions.R")
 ```
 
 ## Import Simulated Data
@@ -178,6 +179,377 @@ plot(sort(qvalue.pop$qvalue), fsr.pop$fdr, col="blue", type="l", xlab="Est. Q-va
 ```
 The estimate for $\Gamma$ works! Our method controls false discovery, while CATE does not. 
 
+## Partially Observed Cell Type Estimate for $L$ (without $\Gamma$)
+Below I will assume that $L$ is sparse. I am interested in seeing how the ML estimate behaves as a function of $n, p$ and $L^T \Sigma^{-1}L$.
+
+Here $\frac{n}{p} L^T \Sigma^{-1}L \approx I_K$
+```{r SimulateData}
+n <- 300
+n.1 <- floor(5*n/10)
+n.2 <- n - n.1
+p <- 3.5e5
+K <- 2
+
+X <- cbind(rep(1, n), rbinom(n, size=1, prob=0.5))  #n x d
+d <- ncol(X)
+C <- matrix(rnorm(n*K), nrow=n, ncol=K) #n x K
+Sigma <- rep(1, p)
+L <- rbind(matrix(rnorm(K * floor(p * (1/n))), nrow=p*(1/n), ncol=K), matrix(0, nrow=p - floor(p * (1/n)), ncol=K)) * sqrt(1)
+#L <- matrix(rnorm(p*K), nrow=p, ncol=K) * sqrt(2) * sqrt(1/n)
+L <- L %*% svd(t(L / Sigma) %*% L)$v
+ind.1 <- sort(sample((1:n), size=n.1, replace = F))
+
+orthog.1 <- diag(n.1) - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]))
+Q.X2 <- qr.Q(qr(X[-ind.1,]), complete=T)[,(d+1):(n-n.1)]
+Q.X1 <- qr.Q(qr(X[ind.1,]), complete=T)[,(d+1):(n.1)]
+orthog.x <- diag(n) - X %*% solve(t(X) %*% X, t(X))
+tmp.C.1 <- C[ind.1,] - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]) %*% C[ind.1,])
+tmp.C.2 <- C[-ind.1,] - X[-ind.1,] %*% solve(t(X[-ind.1,]) %*% X[-ind.1,], t(X[-ind.1,]) %*% C[-ind.1,])
+tmp.svd <- svd(t(tmp.C.1) %*% tmp.C.1 / (n.1 - d)); tmp.Lambda <- tmp.svd$v %*% diag(sqrt(tmp.svd$d), nrow=K, ncol=K) %*% t(tmp.svd$v)
+C <-  C %*% solve(tmp.Lambda)
+
+M <- L %*% t(C) + matrix(rnorm(p*n), nrow=p, ncol=n) * sqrt(Sigma)
+
+C.1 <- C[ind.1,]
+C.2 <- C[-ind.1,]
+#Lambda.all <- t(C %*% solve(Lambda.h)) %*% orthog.x %*% C %*% solve(Lambda.h) / (n - d)
+Lambda.1 <- t(C.1) %*% (diag(n.1) - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]))) %*% C.1 / (n.1 - d)
+Lambda.2 <- t(C.2) %*% (diag(n.2) - X[-ind.1,] %*% solve(t(X[-ind.1,]) %*% X[-ind.1,], t(X[-ind.1,]))) %*% C.2 / (n.2 - d)
+
+out.ML <- Correct.CellType.Sigma(M=M, X=X, C=C, ind.1=ind.1, K.use=K, Sigma=Sigma)
+Lambda <- out.ML$Lambda
+Lambda.h <- out.ML$Lambda.h
+#L.hat <- out.ML$L %*% solve(Lambda.h)
+L.hat <- out.ML$L
+C.1 <- C[ind.1,] %*% solve(Lambda.h)
+C.2 <- C[-ind.1,] %*% solve(Lambda.h)
+L.hat.scale <- L.hat %*% solve(Lambda.h)
+
+####OLS Estimate####
+#A.tmp <- solve(t(C) %*% C - (t(C) %*% X) %*% solve(t(X) %*% X, (t(X) %*% C)))
+#MHC <- (M %*% X) %*% solve(t(X) %*% X, (t(X) %*% C))
+#L.hat.ols <- M %*% C %*% A.tmp - MHC %*% A.tmp
+#L.hat.ols <- M %*% orthog.x %*% C %*% solve(t(C) %*% orthog.x %*% C)
+tmp.C.1 <- C[ind.1,] - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]) %*% C[ind.1,])
+tmp.C.2 <- C[-ind.1,] - X[-ind.1,] %*% solve(t(X[-ind.1,]) %*% X[-ind.1,], t(X[-ind.1,]) %*% C[-ind.1,])
+L.hat.ols <- M[,ind.1] %*% tmp.C.1 %*% solve(t(tmp.C.1) %*% tmp.C.1 + t(tmp.C.2) %*% tmp.C.2) + M[,-ind.1] %*% tmp.C.2 %*% solve(t(tmp.C.1) %*% tmp.C.1 + t(tmp.C.2) %*% tmp.C.2)
+
+diff.partial <- cbind(((L.hat.scale - L)[1:floor(p * (1/n)),])^2) * (n - 2*d)
+diff.ols.1 <- (M[1:floor(p * (1/n)),ind.1] %*% orthog.1 %*% C[ind.1,] %*% solve(t(C[ind.1,]) %*% orthog.1 %*% C[ind.1,]) - L[1:(p/n),])^2 * (n.1 - d)
+diff.ols <- cbind(L.hat.ols[1:floor(p * (1/n)),] - L[1:floor(p * (1/n)),])^2 * (n - 2*d)
+diff.ols.partial <- cbind(L.hat.ols[1:floor(p * (1/n)),] - L.hat.scale[1:floor(p * (1/n)),])^2 * (n - 2*d)
+
+risk.est.partial <- sqrt(apply(diff.partial, 2, mean))
+risk.est.1 <- sqrt(apply(diff.ols.1, 2, mean))
+risk.est.all <- sqrt(apply(diff.ols, 2, mean))
+
+#Calculate derivatives#
+alpha.1 <- (n.1 - d) / (n - 2*d)
+alpha.2 <- 1 - alpha.1
+
+LtsinvL <- t(L.hat) %*% L.hat
+LtsinvY2 <- 1/sqrt(n.2 - d) * t(L.hat) %*% M[,-ind.1] %*% Q.X2
+deriv.opt <- L.hat - alpha.1 * (1/(n.1 - d)) * M[,ind.1] %*% orthog.1 %*% C[ind.1,] %*% solve(Lambda.h) - alpha.2 * L.hat %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL, LtsinvL) + alpha.2 * L.hat %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL, LtsinvY2) %*% t(solve(diag(1, nrow=K, ncol=K) + LtsinvL, LtsinvY2)) - alpha.2 * 1/sqrt(n.2 - d) * M[,-ind.1] %*% Q.X2 %*% t(solve(diag(1, nrow=K, ncol=K) + LtsinvL, LtsinvY2))
+
+LtsinvL <- t(L.hat.ols %*% Lambda.h) %*% L.hat.ols %*% Lambda.h
+LtsinvY2 <- 1/sqrt(n.2 - d) * t(L.hat.ols %*% Lambda.h) %*% M[,-ind.1] %*% Q.X2
+deriv.ols <- L.hat.ols %*% Lambda.h - alpha.1 * (1/(n.1 - d)) * M[,ind.1] %*% orthog.1 %*% C[ind.1,] %*% solve(Lambda.h) - alpha.2 * L.hat.ols %*% Lambda.h %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL, LtsinvL) + alpha.2 * L.hat.ols %*% Lambda.h %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL, LtsinvY2) %*% t(solve(diag(1, nrow=K, ncol=K) + LtsinvL, LtsinvY2)) - alpha.2 * 1/sqrt(n.2 - d) * M[,-ind.1] %*% Q.X2 %*% t(solve(diag(1, nrow=K, ncol=K) + LtsinvL, LtsinvY2))
+
+LtsinvL.ols <- t(L.hat.ols) %*% L.hat.ols
+LtsinvY2.ols <- 1/sqrt(n.2 - d) * t(L.hat.ols) %*% M[,-ind.1] %*% Q.X2
+LtJinvY2 <- LtsinvY2.ols - LtsinvL.ols %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL.ols, LtsinvY2.ols)
+M2.true <- t(tmp.C.2) %*% tmp.C.2 / (n.2 - d)
+M2.hat.ols <- diag(1, nrow=K, ncol=K) - ( LtsinvL.ols - LtsinvL.ols %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL.ols, LtsinvL.ols) ) + LtJinvY2 %*% t(LtJinvY2)
+diff.M2s.ols <- sqrt(n - 2*d) * (M2.true - M2.hat.ols)
+diff.corr.ols <- sqrt(n - 2*d) * (LtJinvY2 %*% t(Q.X2) %*% tmp.C.2 / sqrt(n.2 - d) - M2.true)
+
+##Test Estimate for M2 using OLS Estimate for L##
+M.true <- (t(tmp.C.2) %*% tmp.C.2 + t(tmp.C.1) %*% tmp.C.1) / (n - 2*d)
+phi <- (n - 2*d)/p * t(L / Sigma) %*% L
+diff.L.hat <- phi + solve(M.true) - t(L.hat.scale) %*% L.hat.scale * (n-2*d)/p
+diff.L.ols <- phi + solve(M.true) - t(L.hat.ols) %*% L.hat.ols * (n-2*d)/p
+A <- t(L.hat.ols / Sigma) %*% L.hat.ols + diag(1, nrow=K, ncol=K)
+A.tilde <- (n - 2*d)/p * A
+C1.test <- t(Q.X1) %*% C[ind.1,]
+C2.test <- t(Q.X2) %*% C[-ind.1,]
+E1 <- M[,ind.1] %*% Q.X1 - L %*% t(C1.test)
+E2 <- M[,-ind.1] %*% Q.X2 - L %*% t(C2.test)
+E.tilde <- E1 %*% C1.test %*% solve(t(C1.test) %*% C1.test + t(C2.test) %*% C2.test) + E2 %*% C2.test %*% solve(t(C1.test) %*% C1.test + t(C2.test) %*% C2.test)
+m1 <- n.1 - d
+m2 <- n.2 - d
+m <- m1 + m2
+#Test of 1#
+true.1 <- solve(A) %*% t(L.hat.ols) %*% L %*% M2.true %*% t(L) %*% L.hat.ols %*% solve(A)
+theory.1 <- solve(A.tilde) %*% phi %*% M2.true %*% phi %*% solve(A.tilde)
+#1 is correct
+#Test of 2#
+true.2 <- 1/m2 * solve(A) %*% t(L.hat.ols) %*% L %*% t(C2.test) %*% t(E2) %*% L.hat.ols %*% solve(A)
+theory.2 <- solve(A) %*% t(L.hat.ols) %*% L %*% M2.true %*% solve(M.true) %*% solve(A.tilde)
+#2 is correct
+#Test of 3#
+true.3 <- t(1/m2 * solve(A) %*% t(L.hat.ols) %*% L %*% t(C2.test) %*% t(E2) %*% L.hat.ols %*% solve(A))
+theory.3 <- t(solve(A) %*% t(L.hat.ols) %*% L %*% M2.true %*% solve(M.true) %*% solve(A.tilde))
+#3 is correct
+####Test of 4####
+true.4.a <- 1/m2 * solve(A) %*% t(L) %*% E2 %*% t(E2) %*% L %*% solve(A)
+theory.4.a <- 1/alpha.2 * solve(A.tilde) %*% phi %*% solve(A.tilde) * m2/p
+#4a is correct
+true.4.b <- 1/m2 * solve(A) %*% t(L) %*% E2 %*% t(E2) %*% E.tilde %*% solve(A)
+theory.4.b <- 1/sqrt(p)
+#4b is correct
+true.4.c <- t(1/m2 * solve(A) %*% t(L) %*% E2 %*% t(E2) %*% E.tilde %*% solve(A))
+theory.4.c <- 1/sqrt(p)
+#4c is correct
+true.4.d.1 <- t(C1.test) %*% t(E1) %*% E2 %*% t(E2) %*% E1 %*% C1.test / m2 / p^2
+theory.4.d.1 <- m1/p
+#4d.i is correct
+true.4.d.2 <- 1/m2/p^2 * t(C2.test) %*% t(E2) %*% E2 %*% t(E2) %*% E2 %*% C2.test
+theory.4.d.2 <- M2.true + alpha.2*m/p*M2.true
+#4d.ii appears to be correct
+true.4.d.3 <- 1/m2/p^2 * t(C2.test) %*% t(E2) %*% E2 %*% t(E2) %*% E1 %*% C2.test
+theory.4.d.2 <- 1/sqrt(p)
+#4d.iii and 4d.iv appear to be correct
+true.4.d <- 1/m2 * solve(A) %*% t(E.tilde) %*% E2 %*% t(E2) %*% E.tilde %*% solve(A)
+theory.4.d <- solve(A.tilde) %*% solve(M.true) %*% ( M2.true + m1/p*diag(1, nrow=K, ncol=K) + m2/p*M2.true ) %*% solve(M.true) %*% solve(A.tilde)
+#4d is correct
+true.4 <- 1/m2 * solve(A) %*% t(L.hat.ols) %*% E2 %*% t(E2) %*% L.hat.ols %*% solve(A)
+theory.4 <- solve(A.tilde) %*% ( solve(M.true, M2.true) %*% solve(M.true) + m/p*phi + m1/p*solve(M.true) %*% solve(M.true) + m2/p * solve(M.true, M2.true) %*% solve(M.true) ) %*% solve(A.tilde)
+#4 is correct
+###Test overall theory estimate of M2###
+#The theory is correct
+
+###Test C2'C2.hat###
+C1.test <- t(Q.X1) %*% C[ind.1,]
+C2.test <- t(Q.X2) %*% C[-ind.1,]
+LtsinvL.ols <- t(L.hat.ols) %*% L.hat.ols
+LtsinvY2 <- t(L.hat.ols) %*% M[,-ind.1] %*% Q.X2
+C2.hat <- t(LtsinvY2) %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL.ols)
+inner.test <- 1/m2 * t(C2.hat) %*% C2.test
+
+  
+
+LtsinvL.hat <- t(L.hat.scale) %*% L.hat.scale
+LtsinvY2.hat <- 1/sqrt(n.2 - d) * t(L.hat.scale) %*% M[,-ind.1] %*% Q.X2
+LtJinvY2 <- LtsinvY2.hat - LtsinvL.hat %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL.hat, LtsinvY2.hat)
+M2.true <- t(tmp.C.2) %*% tmp.C.2 / (n.2 - d)
+M2.hat.scale <- diag(1, nrow=K, ncol=K) - ( LtsinvL.hat - LtsinvL.hat %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL.hat, LtsinvL.hat) ) + LtJinvY2 %*% t(LtJinvY2)
+diff.M2s.hat <- sqrt(n - 2*d) * (M2.true - M2.hat.scale)
+diff.corr.hat <- sqrt(n - 2*d) * (LtJinvY2 %*% t(Q.X2) %*% tmp.C.2 / sqrt(n.2 - d) - M2.true)
+C2.hat <- sqrt(n.2 - d) * LtJinvY2
+V.C2 <- qr.Q(qr(t(Q.X2) %*% C[-ind.1,]), complete = T)[,(K+1):m2]
+svd(t(V.C2) %*% t(C2.hat)/m2)$d
+
+#Save simulation data#
+save.sim <- F
+if (save.sim) {
+  dir.sim <- "../data/Simulations_160920"
+  dir.out <- "../output/Simulations_160920"
+  write.table(X, file=paste(dir.sim, "X.txt", sep="/"), sep="\t")
+  write.table(C, file=paste(dir.sim, "C.txt", sep="/"), sep="\t")
+  write.table(M, file=paste(dir.sim, "M.txt", sep="/"), sep="\t")
+  write.table(cbind(ind.1), file=paste(dir.sim, "ind.1.txt", sep="/"), sep="\t")
+  write.table(L, file=paste(dir.sim, "L.txt", sep="/"), sep="\t")
+  
+  write.table(L.hat.scale, file=paste(dir.out, "L.hat.scale.txt", sep="/"))
+  write.table(L.hat.ols, file=paste(dir.out, "L.hat.ols.txt", sep="/"))
+}
+
+#Import Saved Data#
+import.data <- F
+if (import.data) {
+  dir.sim <- "../data/Simulations_160920"
+  dir.out <- "../output/Simulations_160920"
+  L <- read.table(file=paste(dir.sim, "L.txt", sep="/"), sep="\t", header = T, dec=".")
+  M <- read.table(file=paste(dir.sim, "M.txt", sep="/"), sep="\t", header = T, dec=".")
+  X <- read.table(file=paste(dir.sim, "X.txt", sep="/"), sep="\t", header = T, dec=".")
+  C <- read.table(file=paste(dir.sim, "C.txt", sep="/"), sep="\t", header = T, dec=".")
+  ind.1 <- as.vector(read.table(file=paste(dir.sim, "ind.1.txt", sep="/"), sep="\t", header = T, dec="."))
+  L.hat.scale <- read.table(file=paste(dir.out, "L.hat.scale.txt", sep="/"), sep="\t", header = T, dec=".")
+  
+  orthog.1 <- diag(n.1) - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]))
+  Q.X2 <- qr.Q(qr(X[-ind.1,]), complete=T)[,(d+1):(n-n.1)]
+  orthog.x <- diag(n) - X %*% solve(t(X) %*% X, t(X))
+  
+  tmp.C.1 <- C[ind.1,] - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]) %*% C[ind.1,])
+  tmp.C.2 <- C[-ind.1,] - X[-ind.1,] %*% solve(t(X[-ind.1,]) %*% X[-ind.1,], t(X[-ind.1,]) %*% C[-ind.1,])
+  L.hat.ols <- M[,ind.1] %*% tmp.C.1 %*% solve(t(tmp.C.1) %*% tmp.C.1 + t(tmp.C.2) %*% tmp.C.2) + M[,-ind.1] %*% tmp.C.2 %*% solve(t(tmp.C.1) %*% tmp.C.1 + t(tmp.C.2) %*% tmp.C.2)
+  
+}
+
+#Plot the bias#
+hist((L.hat.scale[(floor(p * (1/n))+1):p,1] - L[(floor(p * (1/n))+1):p,1]) * sqrt(n), prob=T, col=rgb(1,0,0,0.5), main="Histogram of non-zero and zero components of L with POD", xlab="sqrt(n)*Bias") #red is parts of L that are 0
+hist((L.hat.scale[1:floor(p * (1/n)),1] - L[1:floor(p * (1/n)),1]) * sqrt(n), col=rgb(0,0,1,0.5), prob=T, add=T) #blue is parts of L that are non-zero
+
+hist((L.hat.ols[(floor(p * (1/n))+1):p,1] - L[(floor(p * (1/n))+1):p,1]) * sqrt(n), prob=T, col=rgb(1,0,0,0.5), main="Histogram of non-zero and zero components of L with all data", xlab="sqrt(n)*Bias")
+hist((L.hat.ols[1:floor(p * (1/n)),1] - L[1:floor(p * (1/n)),1]) * sqrt(n), col=rgb(0,0,1,0.5), prob=T, add=T)
+#we see that there is relatively little difference between the bias of the zero and non-zero components in both the OLS and partially observed data. Both distributions have similar mean (about 0) and variance (about 1, since each component of the residual matrix has sd 1)
+
+#Plot the difference in OLS and POD, OLS and OLS with part of the data#
+hist(sqrt(n) * (L.hat.ols[,1] - L.hat.scale[,1]), main="Scaled Difference Between OLS with all data and POD")
+
+
+
+```
+It appears that the partially observed cell type does just as well as the completely observed case. In fact, it appears that the difference between the OLS and POD estimators are closer that $\frac{1}{n}$. This is invariant of $L$ being sparse or dense. We only require that $\frac{n}{p}L^T \Sigma^{-1}L$ be pd. Further, this appears to be the case even when we estimate $\Sigma$. Let $J =  \Sigma + LL^T$ and $M_2 = \frac{1}{n_2 - d}C_2 P_{X^T}^{\perp}C_2^T$. Then 
+
+```{r tests}
+n <- 300
+n.1 <- floor(n/2)
+n.2 <- n - n.1
+p.vec <- c(3.5e5)
+K <- 1
+n.repeat <- 10
+#results.lambda <- matrix(0, nrow=n.repeat, ncol=length(p.vec))
+#results.lambda.ols <- matrix(0, nrow=n.repeat, ncol=length(p.vec))
+#results.sd.partial <- matrix(0, nrow=n.repeat, ncol=length(p.vec))
+#results.sd.all <- matrix(0, nrow=n.repeat, ncol=length(p.vec))
+#results.corr <- matrix(0, nrow=n.repeat, ncol=length(p.vec))
+#results.corr.ols <- matrix(0, nrow=n.repeat, ncol=length(p.vec))
+#results.M2.ratios2 <- matrix(0, nrow=n.repeat, ncol=length(p.vec))
+results.meta.diff <- matrix(0, nrow=n.repeat, ncol=length(p.vec))
+for (j in 1:length(p.vec)) {
+  p <- p.vec[j]
+  for (i in 1:n.repeat) {
+		X <- cbind(rep(1, n), rbinom(n, size=1, prob=0.5))  #n x d
+		d <- ncol(X)
+		C <- matrix(rnorm(n*K), nrow=n, ncol=K) #n x K
+		Sigma <- rep(1, p)
+		L <- rbind(matrix(rnorm(K * floor(p * (1/n))), nrow=p*(1/n), ncol=K), matrix(0, nrow=p - floor(p * (1/n)), ncol=K)) * sqrt(2)
+		L <- L %*% svd(t(L / Sigma) %*% L)$v
+		ind.1 <- sort(sample((1:n), size=n.1, replace = F))
+		
+		orthog.1 <- diag(n.1) - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]))
+		Q.X2 <- qr.Q(qr(X[-ind.1,]), complete=T)[,(d+1):(n-n.1)]
+		orthog.x <- diag(n) - X %*% solve(t(X) %*% X, t(X))
+		tmp.C.1 <- C[ind.1,] - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]) %*% C[ind.1,])
+		tmp.C.2 <- C[-ind.1,] - X[-ind.1,] %*% solve(t(X[-ind.1,]) %*% X[-ind.1,], t(X[-ind.1,]) %*% C[-ind.1,])
+		tmp.svd <- svd(t(tmp.C.1) %*% tmp.C.1 / (n.1 - d)); tmp.Lambda <- tmp.svd$v %*% diag(sqrt(tmp.svd$d), nrow=K, ncol=K) %*% t(tmp.svd$v)
+		C <-  C %*% solve(tmp.Lambda)
+		
+		M <- L %*% t(C) + matrix(rnorm(p*n), nrow=p, ncol=n) * sqrt(Sigma)
+		
+		C.1 <- C[ind.1,]
+		C.2 <- C[-ind.1,]
+		#Lambda.all <- t(C %*% solve(Lambda.h)) %*% orthog.x %*% C %*% solve(Lambda.h) / (n - d)
+		Lambda.1 <- t(C.1) %*% (diag(n.1) - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]))) %*% C.1 / (n.1 - d)
+		Lambda.2 <- t(C.2) %*% (diag(n.2) - X[-ind.1,] %*% solve(t(X[-ind.1,]) %*% X[-ind.1,], t(X[-ind.1,]))) %*% C.2 / (n.2 - d)
+		
+		out.ML <- Correct.CellType.Sigma(M=M, X=X, C=C, ind.1=ind.1, K.use=K, Sigma=Sigma)
+		Lambda <- out.ML$Lambda
+		Lambda.h <- out.ML$Lambda.h
+		#L.hat <- out.ML$L %*% solve(Lambda.h)
+		L.hat <- out.ML$L
+		C.1 <- C[ind.1,] %*% solve(Lambda.h)
+		C.2 <- C[-ind.1,] %*% solve(Lambda.h)
+		L.hat.scale <- L.hat %*% solve(Lambda.h)
+		
+		####OLS Estimate####
+		#A.tmp <- solve(t(C) %*% C - (t(C) %*% X) %*% solve(t(X) %*% X, (t(X) %*% C)))
+		#MHC <- (M %*% X) %*% solve(t(X) %*% X, (t(X) %*% C))
+		#L.hat.ols <- M %*% C %*% A.tmp - MHC %*% A.tmp
+		#L.hat.ols <- M %*% orthog.x %*% C %*% solve(t(C) %*% orthog.x %*% C)
+		tmp.C.1 <- C[ind.1,] - X[ind.1,] %*% solve(t(X[ind.1,]) %*% X[ind.1,], t(X[ind.1,]) %*% C[ind.1,])
+		tmp.C.2 <- C[-ind.1,] - X[-ind.1,] %*% solve(t(X[-ind.1,]) %*% X[-ind.1,], t(X[-ind.1,]) %*% C[-ind.1,])
+		L.hat.ols <- M[,ind.1] %*% tmp.C.1 %*% solve(t(tmp.C.1) %*% tmp.C.1 + t(tmp.C.2) %*% tmp.C.2) + M[,-ind.1] %*% tmp.C.2 %*% solve(t(tmp.C.1) %*% tmp.C.1 + t(tmp.C.2) %*% tmp.C.2)
+		
+		#Calculate derivatives#
+		alpha.1 <- (n.1 - d) / (n - 2*d)
+		alpha.2 <- 1 - alpha.1
+		
+		LtsinvL.ols <- t(L.hat.ols) %*% L.hat.ols
+		LtsinvY2.ols <- 1/sqrt(n.2 - d) * t(L.hat.ols) %*% M[,-ind.1] %*% Q.X2
+		LtJinvY2 <- LtsinvY2.ols - LtsinvL.ols %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL.ols, LtsinvY2.ols)
+		M2.true <- t(tmp.C.2) %*% tmp.C.2 / (n.2 - d)
+		M2.hat.ols <- diag(1, nrow=K, ncol=K) - ( LtsinvL.ols - LtsinvL.ols %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL.ols, LtsinvL.ols) ) + LtJinvY2 %*% t(LtJinvY2)
+		diff.M2s.ols <- sqrt(n - d) * (M2.true - M2.hat.ols)
+		diff.corr.ols <- sqrt(n - d) * (LtJinvY2 %*% t(Q.X2) %*% tmp.C.2 / sqrt(n.2 - d) - M2.true)
+		
+		LtsinvL.hat <- t(L.hat.scale) %*% L.hat.scale
+		LtsinvY2.hat <- 1/sqrt(n.2 - d) * t(L.hat.scale) %*% M[,-ind.1] %*% Q.X2
+		LtJinvY2 <- LtsinvY2.hat - LtsinvL.hat %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL.hat, LtsinvY2.hat)
+		M2.true <- t(tmp.C.2) %*% tmp.C.2 / (n.2 - d)
+		M2.hat.scale <- diag(1, nrow=K, ncol=K) - ( LtsinvL.hat - LtsinvL.hat %*% solve(diag(1, nrow=K, ncol=K) + LtsinvL.hat, LtsinvL.hat) ) + LtJinvY2 %*% t(LtJinvY2)
+    diff.M2s.hat <- sqrt(n - d) * (M2.true - M2.hat.scale)
+    diff.corr.hat <- sqrt(n - d) * (LtJinvY2 %*% t(Q.X2) %*% tmp.C.2 / sqrt(n.2 - d) - M2.true)
+		
+    results.meta.diff[i,j] <- (n - 2*d)/p * t(L.hat.scale - L) %*% (L.hat.scale - L) - solve(t(tmp.C.1) %*% tmp.C.1 + t(tmp.C.2) %*% tmp.C.2) * (n - 2*d)
+    #results.M2.ratios2[i,j] <- diff.M2s.hat / diff.M2s.ols
+		#results.lambda[i,j] <- diff.M2s.hat
+		#results.lambda.ols[i,j] <- diff.M2s.hat / diff.M2s.ols
+		#results.corr[i,j] <- diff.corr.hat
+		#results.corr.ols[i,j] <- diff.corr.ols / diff.corr.hat
+		#results.sd.partial[i,j] <- sd(sqrt(n) * (L.hat.ols[1:floor(p * (1/n)),] - L.hat.scale[1:floor(p * (1/n)),]))
+		#results.sd.all[i,j] <- sd(sqrt(n) * (L.hat.ols - L.hat.scale))
+		
+		print(as.character(i*j))
+  }
+}
+```
+
+
+Update Lambda
+```{r UpdateLambda_above}
+Lambda.2.hat <- diag(1, nrow=K, ncol=K)
+R.2.hat.start <- svd(Lambda.2.hat)$v %*% diag(sqrt(svd(Lambda.2.hat)$d), nrow=K, ncol=K) %*% t(svd(Lambda.2.hat)$v)
+
+D.hat <- matrix(optim(R.2.hat.start, fn=fun.bfgs, gr=grad.bfgs, method="BFGS", Sigma=Sigma, L=L.hat, norm.Y2=1/sqrt(n.2-d) * M[,-ind.1] %*% Q.X2)$par, nrow=K, ncol=K)
+Lambda.2.hat <- D.hat %*% t(D.hat)
+```
+
+
+Here $\frac{n}{p} L^T \Sigma^{-1} \approx 0.01 I_KL$, i.e. signal is very sparse.
+```{r SimulateData}
+n <- 150
+n.1 <- n/2
+p <- 3e4
+K <- 3
+
+X <- cbind(rep(1, n), rbinom(n, size=1, prob=0.5))  #n x d
+C <- matrix(rnorm(n*K), nrow=n, ncol=K)    #n x K
+Sigma <- rep(1, p)
+L <- rbind(matrix(rnorm(K * p * (1/n)), nrow=p*(1/n), ncol=K), matrix(0, nrow=(1 - 1/n)*p, ncol=K)) * sqrt(0.01)
+L <- L %*% svd(t(L / Sigma) %*% L)$v
+ind.1 <- sort(sample((1:n), size=n.1, replace = F))
+M <- L %*% t(C) + matrix(rnorm(p*n), nrow=p, ncol=n) * sqrt(Sigma)
+
+out.ML <- Correct.CellType.Sigma(M=M, X=X, C=C, ind.1=ind.1, K.use=K, Sigma=Sigma)
+sd.est.partial <- apply((out.ML$L - L)[1:(p/n),], 2, sd)
+sd.est.1 <- apply(M[1:(p/n),ind.1] %*% C[ind.1,] %*% solve(t(C[ind.1,]) %*% C[ind.1,]) - L[1:(p/n),], 2, sd)
+sd.est.all <- apply(M[1:(p/n),] %*% C %*% solve(t(C) %*% C) - L[1:(p/n),], 2, sd)
+```
+
+
+```{r TestML_noCellType}
+n <- 300
+p <- 1e5
+K <- 1
+
+X <- cbind(rep(1, n), rbinom(n, size=1, prob=0.5))  #n x d
+d <- ncol(X)
+C <- matrix(rnorm(n*K), nrow=n, ncol=K) #n x K
+Sigma <- rep(1, p)
+L <- rbind(matrix(rnorm(K * floor(p * (1/n))), nrow=p*(1/n), ncol=K), matrix(0, nrow=p - floor(p * (1/n)), ncol=K)) * sqrt(2)
+L <- L %*% svd(t(L / Sigma) %*% L)$v
+M <- L %*% t(C) + matrix(rnorm(p*n), nrow=p, ncol=n) * sqrt(Sigma)
+orthog.x <- diag(n) - X %*% solve(t(X) %*% X, t(X))
+Q.X <- qr.Q(qr(X), complete=TRUE)[,(d+1):n]
+
+out.ML <- fa.em.Sigma(t(M %*% Q.X), r=K, Sigma=Sigma)
+L.hat <- out.ML$Gamma
+L.ols <- M %*% orthog.x %*% C %*% solve(t(C) %*% orthog.x %*% C)
+risk.nocell <- sqrt(apply(cbind(((L.hat - L)[1:floor(p * (1/n)),])^2), 2, mean)) * sqrt(n)
+risk.cell <- sqrt(apply(cbind(((L.ols - L)[1:floor(p * (1/n)),])^2), 2, mean)) * sqrt(n)
+#out.ML <- Correct.CellType.Sigma.no1(M=M, X=X, C=C, Sigma=Sigma, K.use=K)
+#L.hat <- out.ML$L
+#L.0 <- out.ML$L.0
+
+```
+There is some really amazing behavior here. The first thing we notice is that without any observed cell type, the $L$ we estimate is off by a scale factor that decreases at a rate of $\frac{1}{\sqrt{n}}$, meaning the asymptotic variance is non-trivially larger without the observed cell type. However, when we have partially observed cell type, the asymptotic variance of the estimator for $L$ appears to be the same as that when we observe all cell types. Further, the distance between the ols estimator with all of the data and that with only a part of the data appears to closer that $\frac{1}{n}$.
+
+## Asymptotic Behavior of Partially Observed Data
+Here I will try to understand the asymptotic behavior of the partially observed estimator for $L$ and how it relates to the OLS estimator with all of the data. In all the below simulations, $L$ is sparse with $\frac{n}{p}L^T \Sigma^{-1}L \approx 2$. I am only interested in how the estimators perform on the non-zero entries, since it should perform well when 
+
+$n = 150$, $n_1 = n/2$, $p = 1e5$. 
 
 ## Session information
 

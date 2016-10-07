@@ -412,9 +412,12 @@ SingleFactor <- function(Y, Sigma, r, tol, max.iter) {    #It's assumed Sigma is
 #The penalty is q/2 * (alpha - Omega)' inv.V.Omega (apha - Omega)
 #The updates are weighted least squares
 
-Pen.Huber <- function(Y, Sigma, Gamma, Omega, inv.V.Omega, k.hub = 1.345, ind.use=NULL, q = 1, max.iter=1e4, tol=1e-8) {
+Pen.Huber <- function(Y, Sigma, Gamma, Omega, inv.V.Omega, k.hub = 1.345, ind.use=NULL, q = 0, max.iter=1e4, tol=1e-8) {
 	K <- ncol(Gamma)
-	
+	if (q == 0) {
+	  inv.V.Omega <- matrix(0, nrow=K, ncol=K)
+	  Omega <- cbind(rep(0, length=K))
+	}
 	if (! is.null(ind.use)) {
 		Y <- Y[ind.use]
 		Sigma <- Sigma[ind.use]
@@ -439,7 +442,7 @@ Pen.Huber <- function(Y, Sigma, Gamma, Omega, inv.V.Omega, k.hub = 1.345, ind.us
 			diff <- max(abs(grad.0))
 		}
 		if (diff < tol) {
-			return(list(alpha=alpha.tilde.0 + Omega, n.iter=iter, out=1))
+			return(list(alpha=alpha.tilde.0 + Omega, n.iter=iter, out=1, resid=Y - Gamma %*% alpha.tilde.0))
 		}
 		
 		weights.0 <- Weights.huber(Y - Gamma %*% alpha.tilde.0, k.hub)

@@ -4,8 +4,12 @@
 ###Run optimization for a given simulation###
 #This assumes Gamma is 0
 
-Correct.CellType <- function(M, X, C, ind.1, K.use, cov.interest=c(1), B.sim) {     #The covariate of interest is in B.sim, NOT X
-	n <- nrow(X)
+Correct.CellType <- function(M, X, C, ind.1, K.use, cov.interest=c(1), B.sim=NA, return.L=T) {     #The covariate of interest is in B.sim, NOT X
+	#M is p x n
+  #X is n x d
+  #C is n x K
+  
+  n <- nrow(X)
 	K <- ncol(C)
 	d <- ncol(X)
 	p <- nrow(M)
@@ -33,6 +37,9 @@ Correct.CellType <- function(M, X, C, ind.1, K.use, cov.interest=c(1), B.sim) { 
 	Sigma <- fa.em(t( M %*% qr.Q(qr(X), complete=T)[,(d+1):n] ), r=K.use)$Sigma
 	out.turbo <- turboem(par=c(L.0), fixptfn=Update.L, objfn=ll.L, method="squarem", Z1=Z1, Z2=Z2, F.mat=F.mat, Lambda=Lambda, Gamma=Gamma, Sigma=Sigma, m2=m.2, control.run=list(tol=1e-8, convtype="objfn"))
 	L <- matrix(out.turbo$pars, nrow=p, ncol=K)
+	if (return.L) {
+	  return(list(L=L, turbo=out.turbo))
+	}
 	
 	C.2.hat <- solve( t(L) %*% (L / Sigma), t(L) %*% (Z2 / Sigma) ) + t(C.1) %*% X.1 %*% solve(t(X.1) %*% X.1) %*% t(X.2)
 	#rm(L)
@@ -56,6 +63,160 @@ Correct.CellType <- function(M, X, C, ind.1, K.use, cov.interest=c(1), B.sim) { 
 	fsr.i <- false.sign.results(B.sim[,cov.interest[1]], beta.all[,cov.interest[1]+1], q.values$qvalues)
 	return(list(EM=out.turbo, beta=beta.all, p.values=p.values, q.value=q.values, fsr=fsr.i))
 }
+
+Correct.CellType.Sigma <- function(M, X, C, ind.1, Sigma, K.use, cov.interest=c(1), B.sim=NA, return.L=T) {     #The covariate of interest is in B.sim, NOT X
+  #M is p x n
+  #X is n x d
+  #C is n x K
+  
+  n <- nrow(X)
+  K <- ncol(C)
+  d <- ncol(X)
+  p <- nrow(M)
+  Gamma <- cbind(rep(0,p))
+  n.1 <- length(ind.1)
+  n.2 <- n - n.1
+  m.1 <- n.1 - d
+  m.2 <- n.2 - d
+  
+  X.1 <- X[ind.1,]
+  X.2 <- X[-ind.1,]
+  C.1 <- C[ind.1,]
+  
+  orthog.X.1 <- diag(n.1) - X.1 %*% solve(t(X.1) %*% X.1, t(X.1))
+  orthog.X.2 <- diag(n.2) - X.2 %*% solve(t(X.2) %*% X.2, t(X.2))
+  Lambda <- 1/(n.1 - d) * t(C.1) %*% orthog.X.1 %*% C.1  #K x K
+  s.Lambda <- svd(Lambda)
+  Lambda.h <- s.Lambda$v %*% diag(sqrt(s.Lambda$d), nrow=K, ncol=K) %*% t(s.Lambda$v)
+  C.1 <- C.1 %*% solve(Lambda.h)
+  
+  Q.X2.orthog <- qr.Q(qr(X.2), complete=T)[,(d+1):n.2]     #n.2 x (n.2 - d)
+  
+  F.mat <- t(C.1) %*% orthog.X.1      #K x n.1
+  Z1 <- M[,ind.1] %*% orthog.X.1
+  Z2 <- M[,-ind.1] %*% orthog.X.2
+  
+  L.0 <- Z1 %*% t(F.mat) %*% solve(F.mat %*% t(F.mat))
+  out.turbo <- turboem(par=c(L.0), fixptfn=Update.L, objfn=ll.L, method="squarem", Z1=Z1, Z2=Z2, F.mat=F.mat, Lambda=diag(1, nrow=K, ncol=K), Gamma=Gamma, Sigma=Sigma, m2=m.2, control.run=list(tol=1e-12, convtype="objfn"))
+  L <- matrix(out.turbo$pars, nrow=p, ncol=K)
+  if (return.L) {
+    return(list(L=L, turbo=out.turbo, Lambda=Lambda, Lambda.h=Lambda.h))
+  }
+  
+  C.2.hat <- solve( t(L) %*% (L / Sigma), t(L) %*% (Z2 / Sigma) ) + t(C.1) %*% X.1 %*% solve(t(X.1) %*% X.1) %*% t(X.2)
+  #rm(L)
+  cov.total <- cbind(rbind(X.1, X.2), rbind(cbind(C.1), t(C.2.hat)))   #n x (d+K)
+  dof <- n - d - K
+  M.use <- cbind(M[,ind.1], M[,-ind.1])
+  beta.all <- M.use %*% cov.total %*% solve(t(cov.total) %*% cov.total)
+  var.beta <- solve(t(cov.total) %*% cov.total)
+  orthog.total <- diag(n) - cov.total %*% solve(t(cov.total) %*% cov.total) %*% t(cov.total)
+  Sigma <- rowSums((M.use %*% orthog.total) * M.use) / dof
+  rm(M.use)
+  
+  p.values <- cbind(2 - 2 * pt( abs(beta.all[,cov.interest[1]+1]) / sqrt(Sigma) / sqrt(var.beta[cov.interest[1]+1, cov.interest[1]+1]), df=dof ))
+  if (length(cov.interest) > 1) {
+    for (i in cov.interest[-1]) {
+      p.values <- cbind(p.values, 2 - 2 * pt( beta.all[,i+1] / sqrt(Sigma) / sqrt(var.beta[i+1, i+1]), df=dof ))
+    }
+  }
+  
+  q.values <- qvalue(p.values[,1])
+  fsr.i <- false.sign.results(B.sim[,cov.interest[1]], beta.all[,cov.interest[1]+1], q.values$qvalues)
+  return(list(EM=out.turbo, beta=beta.all, p.values=p.values, q.value=q.values, fsr=fsr.i))
+}
+
+
+Correct.CellType.Sigma.no1 <- function(M, X, C, Sigma, K.use, cov.interest=c(1), B.sim=NA, return.L=T) {     #The covariate of interest is in B.sim, NOT X
+  #M is p x n
+  #X is n x d
+  #C is n x K
+  
+  n <- nrow(X)
+  K <- ncol(C)
+  d <- ncol(X)
+  p <- nrow(M)
+  m <- n - d
+  
+  orthog.X <- diag(n) - X %*% solve(t(X) %*% X, t(X))
+  Lambda <- 1/(n - d) * t(C) %*% orthog.X %*% C  #K x K
+  s.Lambda <- svd(Lambda)
+  Lambda.h <- s.Lambda$v %*% diag(sqrt(s.Lambda$d), nrow=K, ncol=K) %*% t(s.Lambda$v)
+  C <- C %*% solve(Lambda.h)
+  Q.X <- qr.Q(qr(X), complete = T)[,(d+1):n]
+
+  Z <- M %*% Q.X
+  
+  tmp.svd <- svd(Z)
+  L.0 <- 1/sqrt(m) * tmp.svd$u[,1:K] %*% diag(tmp.svd$d, nrow=K, ncol=K)
+  out.turbo <- turboem(par=c(L.0), fixptfn=Update.L.no1, objfn=ll.L.no1, method="squarem", Z = Z, Sigma=Sigma, K=K, control.run=list(tol=1e-12, convtype="objfn", convfn.user=convfn.user.objfn))
+  L <- matrix(out.turbo$pars, nrow=p, ncol=K)
+  L <- L %*% svd(t(L / Sigma) %*% L)$v
+  if (return.L) {
+    return(list(L.0=L.0, L=L, turbo=out.turbo, Lambda=Lambda, Lambda.h=Lambda.h))
+  }
+}
+
+
+Correct.CellType.Sigma2 <- function(M, X, C, ind.1, Sigma, K.use, cov.interest=c(1), B.sim=NA, return.L=T) {     #The covariate of interest is in B.sim, NOT X
+  #M is p x n
+  #X is n x d
+  #C is n x K
+  
+  n <- nrow(X)
+  K <- ncol(C)
+  d <- ncol(X)
+  p <- nrow(M)
+  Gamma <- cbind(rep(0,p))
+  n.1 <- length(ind.1)
+  n.2 <- n - n.1
+  m.1 <- n.1 - d
+  m.2 <- n.2 - d
+  
+  X.1 <- X[ind.1,]
+  X.2 <- X[-ind.1,]
+  C.1 <- C[ind.1,]
+  
+  orthog.X.1 <- diag(n.1) - X.1 %*% solve(t(X.1) %*% X.1, t(X.1))
+  orthog.X.2 <- diag(n.2) - X.2 %*% solve(t(X.2) %*% X.2, t(X.2))
+  Lambda <- 1/(n.1 - d) * t(C.1) %*% orthog.X.1 %*% C.1  #K x K
+  
+  Q.X2.orthog <- qr.Q(qr(X.2), complete=T)[,(d+1):n.2]     #n.2 x (n.2 - d)
+  
+  F.mat <- t(C.1) %*% orthog.X.1      #K x n.1
+  Z1 <- M[,ind.1] %*% orthog.X.1
+  Z2 <- M[,-ind.1] %*% orthog.X.2
+  
+  L.0 <- Z1 %*% t(F.mat) %*% solve(F.mat %*% t(F.mat))
+  out.turbo <- turboem(par=c(L.0), fixptfn=Update.L, objfn=ll.L, method="squarem", Z1=Z1, Z2=Z2, F.mat=F.mat, Lambda=Lambda, Gamma=Gamma, Sigma=Sigma, m2=m.2, control.run=list(tol=1e-8, convtype="objfn"))
+  L <- matrix(out.turbo$pars, nrow=p, ncol=K)
+  if (return.L) {
+    return(list(L=L, turbo=out.turbo))
+  }
+  
+  C.2.hat <- solve( t(L) %*% (L / Sigma), t(L) %*% (Z2 / Sigma) ) + t(C.1) %*% X.1 %*% solve(t(X.1) %*% X.1) %*% t(X.2)
+  #rm(L)
+  cov.total <- cbind(rbind(X.1, X.2), rbind(cbind(C.1), t(C.2.hat)))   #n x (d+K)
+  dof <- n - d - K
+  M.use <- cbind(M[,ind.1], M[,-ind.1])
+  beta.all <- M.use %*% cov.total %*% solve(t(cov.total) %*% cov.total)
+  var.beta <- solve(t(cov.total) %*% cov.total)
+  orthog.total <- diag(n) - cov.total %*% solve(t(cov.total) %*% cov.total) %*% t(cov.total)
+  Sigma <- rowSums((M.use %*% orthog.total) * M.use) / dof
+  rm(M.use)
+  
+  p.values <- cbind(2 - 2 * pt( abs(beta.all[,cov.interest[1]+1]) / sqrt(Sigma) / sqrt(var.beta[cov.interest[1]+1, cov.interest[1]+1]), df=dof ))
+  if (length(cov.interest) > 1) {
+    for (i in cov.interest[-1]) {
+      p.values <- cbind(p.values, 2 - 2 * pt( beta.all[,i+1] / sqrt(Sigma) / sqrt(var.beta[i+1, i+1]), df=dof ))
+    }
+  }
+  
+  q.values <- qvalue(p.values[,1])
+  fsr.i <- false.sign.results(B.sim[,cov.interest[1]], beta.all[,cov.interest[1]+1], q.values$qvalues)
+  return(list(EM=out.turbo, beta=beta.all, p.values=p.values, q.value=q.values, fsr=fsr.i))
+}
+
 
 #The above code works
 
@@ -98,6 +259,23 @@ Update.L <- function(par, Z1, Z2, F.mat, Lambda, Gamma, Sigma, m2) {
 	return(c(M %*% solve(U)))     #EM update for L
 }
 
+Update.L.no1 <- function(par, Z, Sigma, K) {
+  p <- nrow(Z)
+  n <- ncol(Z)
+  
+  L <- matrix(par, nrow=p, ncol=K)
+  
+  ##Compute Preliminary Matrices##
+  ZtSinvL <- t(Z / Sigma) %*% L
+  LtSinvL <- t(L / Sigma) %*% L
+  
+  G1 <- ZtSinvL - ZtSinvL %*% solve( diag(1, nrow=K, ncol=K) + LtSinvL, LtSinvL )
+  G2 <- LtSinvL %*% solve( diag(1, nrow=K, ncol=K) + LtSinvL )
+  
+  #####   Update L   #####
+  return(c( (1/n * Z %*% G1) %*% solve( 1/n * t(G1) %*% G1 + diag(1, nrow=K, ncol=K) - G2 ) ))     #EM update for L
+}
+
 ll.L <- function(par, Z1, Z2, F.mat, Lambda, Gamma, Sigma, m2) {
 	p <- nrow(Z1)
 	K <- nrow(F.mat)
@@ -127,6 +305,19 @@ ll.L <- function(par, Z1, Z2, F.mat, Lambda, Gamma, Sigma, m2) {
 	tr1 <- -1/2 * sum( SinvA * A ) + 1/2 * sum( solve(mid.r, t(AtSinvG)) * t(AtSinvG) )
 	tr2 <- 1/2 * sum( solve(mid.Lambda, H1) * H1 )
 	return((logdet + tr1 + tr2)/p)
+}
+
+ll.L.no1 <- function(par, Z, Sigma, K) {
+  p <- nrow(Z)
+  L <- matrix(par, nrow=p, ncol=K)
+  
+  #Preliminary Matrices#
+  LtSinvL <- t(L / Sigma) %*% L
+  ZtSinvL <- t(Z / Sigma) %*% L
+  
+  logdet <- -1/p * sum(log(Sigma)) - 1/p * log(det( diag(1, nrow=K, ncol=K) + LtSinvL ))
+  tr <- -1/p/n * sum( t(Z / Sigma) * t(Z) ) + 1/p/n * sum( solve( diag(1, nrow=K, ncol=K) + LtSinvL, t(ZtSinvL) ) * t(ZtSinvL) )
+  return(logdet + tr)
 }
 
 convfn.user.objfn <- function(old, new) {
@@ -211,4 +402,30 @@ ll.Gamma <- function(par, A, Z2, Lambda, L, Sigma, m1, m2) {
 }
 
 
+
+##BFGS Update for R, Lambda = RR'##
+fun.bfgs <- function(par, Sigma, L, norm.Y2) {    #minus log-likelihood for the components ONLY containing Lambda
+  #norm.Y2 is 1/sqrt(m2) * Y2
+  K <- ncol(L)
+  R <- matrix(par, nrow=K, ncol=K, byrow=F)
+  lambda <- R %*% t(R)
+  logdet <- sum(log(Sigma)) + log(det(diag(1, nrow=K, ncol=K) + t(R) %*% t(L / Sigma) %*% L %*% R))
+  JinvY2 <- norm.Y2 / Sigma - (L / Sigma) %*% solve( solve(lambda) + t(L / Sigma) %*% L, t(L / Sigma) %*% norm.Y2 )
+  tr <- sum(norm.Y2 * JinvY2)
+  return( logdet/2 + tr/2 )
+}
+
+grad.bfgs <- function(par, Sigma, L, norm.Y2) {   #Gradient of the above minus ll
+  K <- ncol(L)
+  R <- matrix(par, nrow=K, ncol=K, byrow=F)
+  lambda <- R %*% t(R)
+  
+  LtSinvL <- t(L / Sigma) %*% L
+  LtSinvY2 <- t(L / Sigma) %*% norm.Y2
+  LtJinvY2 <- LtSinvY2 - LtSinvL %*% solve(solve(lambda) + LtSinvL, LtSinvY2)
+  dh1dR <- solve(diag(1, nrow=K, ncol=1) + LtSinvL %*% lambda) %*% LtSinvL %*% R
+  dh2dR <- LtJinvY2 %*% t(LtJinvY2) %*% R
+  
+  return(c(dh1dR - dh2dR))
+}
 
